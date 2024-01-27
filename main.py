@@ -1,24 +1,25 @@
 # import nest_asyncio
 # nest_asyncio.apply()
 
-
 import logging
 from telegram import Update
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes
 
-BOT_TOKEN = '6507408473:AAGPZf4a95mL9b2SqDXYFyORYxq75_Vt04U'
+f = open("token", "r")
+BOT_TOKEN = f.read()
+f.close()
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-
+# id: FirstName, username, points
 Users={}
 def add_user(user):
     Users[str(user.id)] = [user.first_name, user.username, 0]
     f = open("Users.csv", "a")
     f.write('\n{}, {}, {}, {}'.format(str(user.id), user.first_name, user.username, 0))
     f.close()
-def rewrite_all():
+def rewrite_users():
     f = open("Users.csv", "w")
     i = 1
     for x in Users:
@@ -30,14 +31,22 @@ def rewrite_all():
     f.close()
 # T1, T2, Res1, Res2
 Games=[]
+def rewrite_games():
+    f = open("Games.csv", "w")
+    i = 1
+    for x in Games:
+        if i == 1:
+            f.write('{}, {}, {}, {}'.format(x[0], x[1], x[2], x[3]))
+        else:
+            f.write('\n{}, {}, {}, {}'.format(x[0], x[1], x[2], x[3]))
+        i += 1
+    f.close()
 # ['UserID', 'GameID', 'Pred1', 'Pred2']
 Predictions=[]
 def pred_is_new(p):
     pred_uid_gid = [[i[0], i[1]] for i in Predictions]
     if [str(p[0]), str(p[1])] not in pred_uid_gid and [p[0], p[1]] not in pred_uid_gid:
         return True
-    # i = pred_uid_gid.index([p[0], p[1]])
-    # Predictions.remove(Predictions[i])
     return False
 def pred_is_av(p):
     if 'TBD' in Games[p[1]-1]:
@@ -55,7 +64,6 @@ def init():
     for line in ft:
         x = line.split(',')
         for i in range(len(x)): x[i] = x[i].strip()
-        print(x)
         x[3] = int(x[3])
         Users[x[0]] = x[1:]
     f.close()
@@ -76,7 +84,110 @@ def init():
         Predictions.append(x)
     f.close()
 
-def calculate_all():
+'''commands'''
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_message.from_user
+    text = 'سلام {}'.format(user.first_name)
+    text += '\nبه بات پیش‌بینی خوش اومدی!'
+    text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
+    text+= "\n/pred <gameID> <team1 goal> <team2 goal>"
+
+    if str(user.id) not in Users:
+        add_user(user)
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
+async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = 'بازی‌ها:\n'
+    i = 1
+    for x in Games:
+        text+= '{}: {} {} - {} {}\n'.format(i, x[0], x[2], x[3], x[1])
+        i += 1
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
+async def set_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_message.from_user
+    try:
+        n = int(context.args[0])
+        if 0 < n < len(Games):
+            Games[n-1][2] = context.args[1]
+            Games[n-1][3] = context.args[2]
+            rewrite_games()
+            text = "@{} \n نتیجه نهایی بازی ثبت شد".format(user.username)
+            text+="\n{}: {} {} - {} {}".format(n, Games[n-1][0], Games[n-1][2], Games[n-1][3], Games[n-1][1])
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+        else:
+            text = "@{} \n بازی مورد نظر وجود ندارد".format(user.username)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+    except:
+        await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text = "@{} \n درخواست مورد نظر صحیح نمی‌باشد".format(user.username)
+            )
+async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_message.from_user
+    if str(user.id) not in Users:
+        text="@{}".format(user.username)
+        text+="لطفا ابتدا /start کنید"
+        await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
+    else:
+        try:
+            p = [user.id, int(context.args[0]), int(context.args[1]), int(context.args[2])]
+            if pred_is_new(p) and pred_is_av(p):
+                add_pred(p)
+                text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
+                text+="\n{}: {} {} - {} {}".format(p[1], Games[p[1]-1][0], p[2], p[3], Games[p[1]-1][1])
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not pred_is_new(p):
+                text = "@{}\n شما قبلا این بازی را پیش بینی کرده‌اید".format(user.username)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not pred_is_av(p):
+                text = "@{}\n این بازی برای پیش‌بینی در دسترس نیست".format(user.username)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+        except:
+            await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
+                )
+async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = 'رده‌بندی:\n'
+    i = 1
+    player = []
+    for x in Users:
+        player.append([Users[x][2], Users[x][1]])
+    player.sort()
+    for x in player:
+        text+= '{} - {} : {}\n'.format(i, x[1], x[0])
+        i += 1
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
+async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     def point_calc(pr, gm):
         # if(AND(Matches!C2=Pre!C2,Matches!D2=Pre!D2),10,
         if int(pr[2]) == int(gm[2]) and int(pr[3]) == int(gm[3]):
@@ -95,82 +206,15 @@ def calculate_all():
         if 'TBD' not in Games[int(x[1])-1]:
             a = point_calc(x, Games[x[1]-1])
             Users[x[0]][2]+=a
-    rewrite_all()
+    rewrite_users()
 
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_message.from_user
-    text = 'سلام {}'.format(user.first_name)
-    text += '\nبه بات پیش‌بینی خوش اومدی!'
-    text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-    text+= "\n/pred <gameID> <team1 goal> <team2 goal>"
-
-    if user.id not in Users:
-        add_user(user)
-
+    text = 'محاسبه امتیاز انجام شد'
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text
     )
 
-async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = 'بازی‌ها:\n'
-    i = 1
-    for x in Games:
-        text+= '{}: {} {} - {} {}\n'.format(i, x[0], x[2], x[3], x[1])
-        i += 1
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text
-    )
-
-async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_message.from_user
-    if str(user.id) not in Users:
-        await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="لطفا ابتدا /start کنید"
-    )
-    else:
-        p = [user.id, int(context.args[0]), int(context.args[1]), int(context.args[2])]
-        if pred_is_new(p) and pred_is_av(p):
-            add_pred(p)
-            text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
-            text+="\n{}: {} {} - {} {}".format(p[1], Games[p[1]-1][0], p[2], p[3], Games[p[1]-1][1])
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not pred_is_new(p):
-            text = "@{}\n شما قبلا این بازی را پیش بینی کرده‌اید".format(user.username)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not pred_is_av(p):
-            text = "@{}\n این بازی برای پیش‌بینی در دسترس نیست".format(user.username)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-
-async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    calculate_all()
-    text = 'رده‌بندی:\n'
-    i = 1
-    player = []
-    for x in Users:
-        player.append([Users[x][2], Users[x][1]])
-    player.sort()
-    for x in player:
-        text+= '{} - {} : {}\n'.format(i, x[1], x[0])
-        i += 1
-
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text
-    )
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="متاسفانه متوجه نشدم. دوباره امتحان کن")
@@ -182,10 +226,14 @@ if __name__ == '__main__':
     pred_handler = CommandHandler('pred', pred)
     games_handler = CommandHandler('games', games)
     rank_handler = CommandHandler('rank', rank)
+    calc_handler = CommandHandler('calc', calc)
+    set_handler = CommandHandler('set', set_game)
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(start_handler)
     application.add_handler(pred_handler)
     application.add_handler(games_handler)
     application.add_handler(rank_handler)
+    application.add_handler(calc_handler)
+    application.add_handler(set_handler)
     application.add_handler(unknown_handler)
     application.run_polling()
