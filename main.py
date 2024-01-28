@@ -186,7 +186,7 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = []
     for x in Users:
         player.append([Users[x][2], Users[x][1]])
-    player.sort()
+    player.sort(reverse=True)
     for x in player:
         text+= '{} - {} : {}\n'.format(i, x[1], x[0])
         i += 1
@@ -212,7 +212,7 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return point
     for x in Predictions:
         if 'TBD' not in Games[int(x[1])-1]:
-            a = point_calc(x, Games[x[1]-1])
+            a = point_calc(x, Games[int(x[1])-1])
             Users[x[0]][2]+=a
     rewrite_users()
 
