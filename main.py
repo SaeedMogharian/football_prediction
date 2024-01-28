@@ -57,7 +57,7 @@ def pred_is_new(p):
         return True
     return False
 def pred_is_av(p):
-    if 'TBD' in Games[p[1]-1]:
+    if 'TBD' in Games[int(p[1])-1]:
         return True
     return False
 def add_pred(p):
@@ -65,6 +65,8 @@ def add_pred(p):
     f = open("Predictions.csv", "a")
     f.write('\n{}, {}, {}, {}'.format(str(p[0]), str(p[1]), str(p[2]), str(p[3])))
     f.close()
+
+
 
 def init():
     f = open("Users.csv", "r")
@@ -154,11 +156,11 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     else:
         try:
-            p = [user.id, int(context.args[0]), int(context.args[1]), int(context.args[2])]
+            p = [str(user).id, context.args[0], context.args[1], context.args[2]]
             if pred_is_new(p) and pred_is_av(p):
                 add_pred(p)
                 text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
-                text+="\n{}: {} {} - {} {}".format(p[1], Games[p[1]-1][0], p[2], p[3], Games[p[1]-1][1])
+                text+="\n{}: {} {} - {} {}".format(p[1], Games[int(p[1])-1][0], p[2], p[3], Games[int(p[1])-1][1])
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text=text
