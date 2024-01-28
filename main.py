@@ -12,7 +12,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-# id: FirstName, username, points
+# {id: FirstName, username, points}
 Users={}
 def add_user(user):
     Users[str(user.id)] = [user.first_name, user.username, 0]
@@ -29,7 +29,7 @@ def rewrite_users():
             f.write('\n{}, {}, {}, {}'.format(x, Users[x][0], Users[x][1], Users[x][2]))
         i += 1
     f.close()
-# T1, T2, Res1, Res2
+# [T1, T2, Res1, Res2]
 Games=[]
 def rewrite_games():
     f = open("Games.csv", "w")
@@ -43,8 +43,16 @@ def rewrite_games():
     f.close()
 # ['UserID', 'GameID', 'Pred1', 'Pred2']
 Predictions=[]
+def view_pred(u = True, g = True): 
+    if u == g == True:
+        return [[i[0], i[1]] for i in Predictions]
+    if u == True:
+        return [[i[0], i[1]] for i in Predictions if i[1]==g]
+    if g == True:
+        return [[i[0], i[1]] for i in Predictions if i[0]==u]
+    return [[i[0], i[1]] for i in Predictions if i[0]==u and i[1]==g]
 def pred_is_new(p):
-    pred_uid_gid = [[i[0], i[1]] for i in Predictions]
+    pred_uid_gid = view_pred()
     if [str(p[0]), str(p[1])] not in pred_uid_gid and [p[0], p[1]] not in pred_uid_gid:
         return True
     return False
@@ -146,7 +154,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     else:
         try:
-            p = [user.id, int(context.args[0]), int(context.args[1]), int(context.args[2])]
+            p = [str(user.id), context.args[0], context.args[1], context.args[2]]
             if pred_is_new(p) and pred_is_av(p):
                 add_pred(p)
                 text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
@@ -213,8 +221,19 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     )
+async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    n = context.args[0]
+    text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
+    text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
+    pred_g = [i[0] for i in Predictions if i[1]==n]
+    w = [Users[i][1] for i in Users if i not in pred_g]
+    for u in w:
+        text += "\n@{}".format(u)
 
-
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    ) 
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="متاسفانه متوجه نشدم. دوباره امتحان کن")
@@ -226,6 +245,8 @@ if __name__ == '__main__':
     pred_handler = CommandHandler('pred', pred)
     games_handler = CommandHandler('games', games)
     rank_handler = CommandHandler('rank', rank)
+
+    warn_handler = CommandHandler('warn', warn)
     calc_handler = CommandHandler('calc', calc)
     set_handler = CommandHandler('set', set_game)
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
@@ -233,6 +254,8 @@ if __name__ == '__main__':
     application.add_handler(pred_handler)
     application.add_handler(games_handler)
     application.add_handler(rank_handler)
+
+    application.add_handler(warn_handler)
     application.add_handler(calc_handler)
     application.add_handler(set_handler)
     application.add_handler(unknown_handler)
