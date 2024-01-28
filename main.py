@@ -154,7 +154,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     else:
         try:
-            p = [str(user.id), context.args[0], context.args[1], context.args[2]]
+            p = [user.id, int(context.args[0]), int(context.args[1]), int(context.args[2])]
             if pred_is_new(p) and pred_is_av(p):
                 add_pred(p)
                 text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
@@ -210,6 +210,8 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if int(pr[2]) == int(gm[2]) or int(pr[3]) == int(gm[3]):
             point+=1
         return point
+    for x in Users:
+        Users[x][2] = 0
     for x in Predictions:
         if 'TBD' not in Games[int(x[1])-1]:
             a = point_calc(x, Games[int(x[1])-1])
