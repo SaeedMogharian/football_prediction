@@ -254,6 +254,26 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     )
+async def all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = ":تمام پیش‌‌بینی‌ها"
+    try:
+        g = context.args[0]
+        text += "\nبرای بازی {} ".format(g)
+    except:
+        g = True
+
+    for u in Users:
+        m = view_pred(u = u)
+        m.sort()
+        text += "\n\n{}:".format(Users[u][1])
+        for x in m:
+            n = int(x[1])
+            text += "\n{}: {} {} - {} {}: {}".format(n, Games[n-1][0], x[2], x[3], Games[n-1][1], point_calc(x))
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
 
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,6 +287,7 @@ if __name__ == '__main__':
     games_handler = CommandHandler('games', games)
     rank_handler = CommandHandler('rank', rank)
     mine_handler = CommandHandler('mine', mine)
+    all_handler = CommandHandler('all', all)
 
     warn_handler = CommandHandler('warn', warn)
     calc_handler = CommandHandler('calc', calc)
@@ -277,6 +298,7 @@ if __name__ == '__main__':
     application.add_handler(games_handler)
     application.add_handler(rank_handler)
     application.add_handler(mine_handler)
+    application.add_handler(all_handler)
 
     application.add_handler(warn_handler)
     application.add_handler(calc_handler)
