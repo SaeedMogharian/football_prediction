@@ -45,14 +45,14 @@ def rewrite_games():
 Predictions=[]
 def view_pred(u = True, g = True): 
     if u == g == True:
-        return [[i[0], i[1]] for i in Predictions]
+        return Predictions
     if u == True:
-        return [[i[0], i[1]] for i in Predictions if i[1]==g]
+        return [i for i in Predictions if i[1]==g]
     if g == True:
-        return [[i[0], i[1]] for i in Predictions if i[0]==u]
-    return [[i[0], i[1]] for i in Predictions if i[0]==u and i[1]==g]
+        return [i for i in Predictions if i[0]==u]
+    return [i for i in Predictions if i[0]==u and i[1]==g]
 def pred_is_new(p):
-    pred_uid_gid = view_pred()
+    pred_uid_gid = [[i[0], i[1]] for i in Predictions]
     if [str(p[0]), str(p[1])] not in pred_uid_gid and [p[0], p[1]] not in pred_uid_gid:
         return True
     return False
@@ -65,7 +65,23 @@ def add_pred(p):
     f = open("Predictions.csv", "a")
     f.write('\n{}, {}, {}, {}'.format(str(p[0]), str(p[1]), str(p[2]), str(p[3])))
     f.close()
-
+def point_calc(pr):
+        gm = Games[int(pr[1])-1]
+        if 'TBD' in gm:
+            return 0
+        # if(AND(Matches!C2=Pre!C2,Matches!D2=Pre!D2),10,
+        if int(pr[2]) == int(gm[2]) and int(pr[3]) == int(gm[3]):
+            return 10
+        # if(Matches!C2-Matches!D2=Pre!C2-Pre!D2,7,
+        if int(pr[2])-int(pr[3])==int(gm[2])-int(gm[3]):
+            return 7
+        point = 0
+        # if(AND(OR(Matches!C2=Pre!C2,Matches!D2=Pre!D2),OR(AND(Matches!C2>Matches!D2,Pre!C2>Pre!D2),AND(Matches!C2<Matches!D2,Pre!C2<Pre!D2),AND(Matches!C2=Matches!D2,Pre!C2=Pre!D2))),5,
+        if (int(pr[2])>int(pr[3]) and int(gm[2])>int(gm[3])) or (int(pr[2])<int(pr[3]) and int(gm[2])<int(gm[3])):
+            point+=4
+        if int(pr[2]) == int(gm[2]) or int(pr[3]) == int(gm[3]):
+            point+=1
+        return point
 
 
 def init():
@@ -156,7 +172,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     else:
         try:
-            p = [str(user).id, context.args[0], context.args[1], context.args[2]]
+            p = [str(user.id), context.args[0], context.args[1], context.args[2]]
             if pred_is_new(p) and pred_is_av(p):
                 add_pred(p)
                 text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
@@ -198,25 +214,11 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    def point_calc(pr, gm):
-        # if(AND(Matches!C2=Pre!C2,Matches!D2=Pre!D2),10,
-        if int(pr[2]) == int(gm[2]) and int(pr[3]) == int(gm[3]):
-            return 10
-        # if(Matches!C2-Matches!D2=Pre!C2-Pre!D2,7,
-        if int(pr[2])-int(pr[3])==int(gm[2])-int(gm[3]):
-            return 7
-        point = 0
-        # if(AND(OR(Matches!C2=Pre!C2,Matches!D2=Pre!D2),OR(AND(Matches!C2>Matches!D2,Pre!C2>Pre!D2),AND(Matches!C2<Matches!D2,Pre!C2<Pre!D2),AND(Matches!C2=Matches!D2,Pre!C2=Pre!D2))),5,
-        if (int(pr[2])>int(pr[3]) and int(gm[2])>int(gm[3])) or (int(pr[2])<int(pr[3]) and int(gm[2])<int(gm[3])):
-            point+=4
-        if int(pr[2]) == int(gm[2]) or int(pr[3]) == int(gm[3]):
-            point+=1
-        return point
     for x in Users:
         Users[x][2] = 0
     for x in Predictions:
         if 'TBD' not in Games[int(x[1])-1]:
-            a = point_calc(x, Games[int(x[1])-1])
+            a = point_calc(x)
             Users[x[0]][2]+=a
     rewrite_users()
 
@@ -238,6 +240,21 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     ) 
+async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_message.from_user
+    text = "@{}".format(user.username)
+    text += "\nپیش‌بینی‌های شما"
+    m = view_pred(u = str(user.id))
+    m.sort()
+    for x in m:
+        n = int(x[1])
+        text += "\n{}: {} {} - {} {}: {}".format(n, Games[n-1][0], x[2], x[3], Games[n-1][1], point_calc(x))
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    )
+
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="متاسفانه متوجه نشدم. دوباره امتحان کن")
@@ -249,6 +266,7 @@ if __name__ == '__main__':
     pred_handler = CommandHandler('pred', pred)
     games_handler = CommandHandler('games', games)
     rank_handler = CommandHandler('rank', rank)
+    mine_handler = CommandHandler('mine', mine)
 
     warn_handler = CommandHandler('warn', warn)
     calc_handler = CommandHandler('calc', calc)
@@ -258,6 +276,7 @@ if __name__ == '__main__':
     application.add_handler(pred_handler)
     application.add_handler(games_handler)
     application.add_handler(rank_handler)
+    application.add_handler(mine_handler)
 
     application.add_handler(warn_handler)
     application.add_handler(calc_handler)
