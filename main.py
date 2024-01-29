@@ -254,25 +254,29 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     )
-async def all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = ":تمام پیش‌‌بینی‌ها"
+async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def for_game(text, g):
+        text += "\n\nبرای بازی {}: {} {} - {} {}".format(g, Games[int(g)-1][0], Games[int(g)-1][2], Games[int(g)-1][3], Games[int(g)-1][1])
+        a = []
+        for u in Users:
+            m = view_pred(u = str(u), g = g)
+            for x in m:
+                a.append([point_calc(x), Users[u][1], x[2], x[3]])
+        a.sort(reverse=True, key=lambda k : k[0])
+        for x in a:
+            text+="\n{}: {} - {}: {}".format(x[1], x[2], x[3], x[0])
+        return text
+    t = ":تمام پیش‌‌بینی‌ها"
     try:
         g = context.args[0]
-        text += "\nبرای بازی {} ".format(g)
+        t = for_game(t, g)
     except:
-        g = True
-
-    for u in Users:
-        m = view_pred(u = u)
-        m.sort()
-        text += "\n\n{}:".format(Users[u][1])
-        for x in m:
-            n = int(x[1])
-            text += "\n{}: {} {} - {} {}: {}".format(n, Games[n-1][0], x[2], x[3], Games[n-1][1], point_calc(x))
+        for g in range(1, len(Games)+1):
+            t = for_game(t, str(g))     
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=text
+        text=t
     )
 
 
@@ -287,7 +291,7 @@ if __name__ == '__main__':
     games_handler = CommandHandler('games', games)
     rank_handler = CommandHandler('rank', rank)
     mine_handler = CommandHandler('mine', mine)
-    all_handler = CommandHandler('all', all)
+    res_handler = CommandHandler('res', res)
 
     warn_handler = CommandHandler('warn', warn)
     calc_handler = CommandHandler('calc', calc)
@@ -298,7 +302,7 @@ if __name__ == '__main__':
     application.add_handler(games_handler)
     application.add_handler(rank_handler)
     application.add_handler(mine_handler)
-    application.add_handler(all_handler)
+    application.add_handler(res_handler)
 
     application.add_handler(warn_handler)
     application.add_handler(calc_handler)
