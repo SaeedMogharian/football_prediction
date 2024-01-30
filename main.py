@@ -53,7 +53,7 @@ def view_pred(u = True, g = True):
     return [i for i in Predictions if i[0]==u and i[1]==g]
 def pred_is_new(p):
     pred_uid_gid = [[i[0], i[1]] for i in Predictions]
-    if [str(p[0]), str(p[1])] not in pred_uid_gid and [p[0], p[1]] not in pred_uid_gid:
+    if [p[0], p[1]] not in pred_uid_gid:
         return True
     return False
 def pred_is_av(p):
@@ -82,7 +82,16 @@ def point_calc(pr):
         if int(pr[2]) == int(gm[2]) or int(pr[3]) == int(gm[3]):
             point+=1
         return point
-
+def rewrite_preds():
+    f = open("Predictions.csv", "w")
+    i = 1
+    for p in Predictions:
+        if i == 1:
+            f.write('{}, {}, {}, {}'.format(str(p[0]), str(p[1]), str(p[2]), str(p[3])))
+        else:
+            f.write('\n{}, {}, {}, {}'.format(str(p[0]), str(p[1]), str(p[2]), str(p[3])))
+        i += 1
+    f.close()
 
 def init():
     f = open("Users.csv", "r")
@@ -182,26 +191,34 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     try:
         p = [str(user.id), context.args[0], context.args[1], context.args[2]]
-        if pred_is_new(p) and pred_is_av(p):
-            add_pred(p)
-            text = "@{} \n پیش بینی شما اضافه شد:".format(user.username)
+        text = "@{}".format(user.username)
+        if pred_is_av(p) and pred_is_new(p):
+            text +="\n پیش بینی شما اضافه شد:"
             text+="\n{}: {} {} - {} {}".format(p[1], Games[int(p[1])-1][0], p[2], p[3], Games[int(p[1])-1][1])
+            add_pred(p)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
             )
-        elif not pred_is_new(p):
-            text = "@{}\n شما قبلا این بازی را پیش بینی کرده‌اید".format(user.username)
+        if not pred_is_new(p):
+            text = "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
+            m = [i for i in Predictions if p[0]==i[0] and p[1]==i[1]]
+            if m[0] != p:
+                Predictions.remove(m[0])
+                rewrite_preds()
+                text +="\n پیش بینی شما تغییر کرد:"
+                text+="\n{}: {} {} - {} {}".format(p[1], Games[int(p[1])-1][0], p[2], p[3], Games[int(p[1])-1][1])
+                add_pred(p)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
             )
         elif not pred_is_av(p):
-            text = "@{}\n این بازی برای پیش‌بینی در دسترس نیست".format(user.username)
+            text = "\n این بازی برای پیش‌بینی در دسترس نیست"
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
-            )
+            )        
     except:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
