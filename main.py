@@ -244,17 +244,20 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_auth(update):
         await not_authed(update, context)
-    n = context.args[0]
-    text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
-    text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
-    pred_g = [i[0] for i in Predictions if i[1]==n]
-    w = [Users[i][1] for i in Users if i not in pred_g]
-    for u in w:
-        text += "\n@{}".format(u)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=text
-    ) 
+    try:
+        n = context.args[0]
+        text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
+        text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
+        pred_g = [i[0] for i in Predictions if i[1]==n]
+        w = [Users[i][1] for i in Users if i not in pred_g]
+        for u in w:
+            text += "\n@{}".format(u)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text
+        ) 
+    except:
+       await unknown(update, context)
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_auth(update):
         await not_authed(update, context)
@@ -301,7 +304,10 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="درخواست مورد نظر صحیح نمی‌باشد")
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, 
+        text="درخواست مورد نظر صحیح نمی‌باشد"
+    )
 
 
 if __name__ == '__main__':
