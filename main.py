@@ -43,8 +43,9 @@ def rewrite_games():
     f.close()
 def next_game():
     g = 1
-    while 'TBD' not in Games[g-1]:
-        g+=1
+    while g <= len(Games):
+        if 'TBD' not in Games[g-1]:
+            g+=1
     return str(g)
 # ['UserID', 'GameID', 'Pred1', 'Pred2']
 Predictions=[]
@@ -102,8 +103,7 @@ def init():
     f = open("Users.csv", "r")
     ft = f.read().split('\n')
     for line in ft:
-        x = line.split(',')
-        for i in range(len(x)): x[i] = x[i].strip()
+        x = line.split(', ')
         x[3] = int(x[3])
         Users[x[0]] = x[1:]
     f.close()
@@ -111,15 +111,14 @@ def init():
     f = open("Games.csv", "r")
     ft = f.read().split('\n')
     for line in ft:
-        x = line.split(',')
-        for i in range(len(x)): x[i] = x[i].strip()
+        x = line.split(', ')
         Games.append(x)
     f.close()
 
     f = open("Predictions.csv", "r")
     ft = f.read().split('\n')
     for line in ft:
-        x = line.split(',')
+        x = line.split(', ')
         for i in range(len(x)): x[i] = x[i].strip()
         Predictions.append(x)
     f.close()
@@ -171,7 +170,7 @@ async def set_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     try:
         n = int(context.args[0])
-        if 0 < n < len(Games):
+        if 0 < n < len(Games) + 1:
             Games[n-1][2] = context.args[1]
             Games[n-1][3] = context.args[2]
             rewrite_games()
@@ -318,9 +317,14 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = ":تمام پیش‌‌بینی‌ها"
     try:
         g = context.args[0]
+        if g.isnumeric() and 0 < int(g) < len(Games) + 1:
+            t = for_game(t, g)
+        elif g == "t":
+            for i in range(1, len(Games)+1):
+                t = for_game(t, str(i))
     except:
         g = next_game()            
-    t = for_game(t, g)     
+        t = for_game(t, str(int(g) - 1))     
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
