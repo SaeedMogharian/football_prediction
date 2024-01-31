@@ -41,6 +41,11 @@ def rewrite_games():
             f.write('\n{}, {}, {}, {}'.format(x[0], x[1], x[2], x[3]))
         i += 1
     f.close()
+def next_game():
+    g = 1
+    while 'TBD' not in Games[g-1]:
+        g+=1
+    return str(g)
 # ['UserID', 'GameID', 'Pred1', 'Pred2']
 Predictions=[]
 def view_pred(u = True, g = True): 
@@ -170,14 +175,14 @@ async def set_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             Games[n-1][2] = context.args[1]
             Games[n-1][3] = context.args[2]
             rewrite_games()
-            text = "نتیجه نهایی بازی ثبت شد"
+            text = "نتیجه ثبت شد"
             text+="\n{}: {} {} - {} {}".format(n, Games[n-1][0], Games[n-1][2], Games[n-1][3], Games[n-1][1])
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
             )
         else:
-            text = "بازی مورد نظر وجود ندارد"
+            text = " مشخصات بازی اشتباه وارد شده است"
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
@@ -222,9 +227,11 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=text
             )    
     except:
+        text="لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
+        text+= "\n/pred <gameID> <team1 goal> <team2 goal>"
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
+            text= text
         )
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_auth(update):
@@ -259,24 +266,24 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     )
-#gameID
+#gameID | None
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_auth(update):
         await not_authed(update, context)
     try:
         n = context.args[0]
-        text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
-        text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
-        pred_g = [i[0] for i in Predictions if i[1]==n]
-        w = [Users[i][1] for i in Users if i not in pred_g]
-        for u in w:
-            text += "\n@{}".format(u)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text
-        ) 
     except:
-       await unknown(update, context)
+        n = next_game()
+    text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
+    text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
+    pred_g = [i[0] for i in Predictions if i[1]==n]
+    w = [Users[i][1] for i in Users if i not in pred_g]
+    for u in w:
+            text += "\n@{}".format(u)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=text
+    ) 
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_auth(update):
         await not_authed(update, context)
@@ -311,12 +318,9 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t = ":تمام پیش‌‌بینی‌ها"
     try:
         g = context.args[0]
-        t = for_game(t, g)
     except:
-        g = 1
-        while 'TBD' not in Games[g-1]:
-            g+=1            
-        t = for_game(t, str(g))     
+        g = next_game()            
+    t = for_game(t, g)     
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
