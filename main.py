@@ -192,7 +192,9 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         p = [str(user.id), context.args[0], context.args[1], context.args[2]]
         text = "@{}".format(user.username)
-        if pred_is_av(p) and pred_is_new(p):
+        av = pred_is_av(p)
+        new = pred_is_new(p)
+        if av and new:
             text +="\n پیش بینی شما اضافه شد:"
             text+="\n{}: {} {} - {} {}".format(p[1], Games[int(p[1])-1][0], p[2], p[3], Games[int(p[1])-1][1])
             add_pred(p)
@@ -200,7 +202,13 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=update.effective_chat.id,
                 text=text
             )
-        elif not pred_is_new(p):
+        elif not av:
+            text = "\n این بازی برای پیش‌بینی در دسترس نیست"
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )    
+        elif not new:
             text = "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
             m = [i for i in Predictions if p[0]==i[0] and p[1]==i[1]]
             if m[0] != p:
@@ -212,13 +220,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
-            )
-        elif not pred_is_av(p):
-            text = "\n این بازی برای پیش‌بینی در دسترس نیست"
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )        
+            )    
     except:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
