@@ -200,7 +200,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=update.effective_chat.id,
                 text=text
             )
-        if not pred_is_new(p):
+        elif not pred_is_new(p):
             text = "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
             m = [i for i in Predictions if p[0]==i[0] and p[1]==i[1]]
             if m[0] != p:
@@ -311,8 +311,10 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
         g = context.args[0]
         t = for_game(t, g)
     except:
-        for g in range(1, len(Games)+1):
-            t = for_game(t, str(g))     
+        g = 1
+        while 'TBD' not in Games[g-1]:
+            g+=1            
+        t = for_game(t, str(g))     
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
