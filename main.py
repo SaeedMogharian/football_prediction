@@ -129,8 +129,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     text = 'بازی‌ها:\n'
     for x in Games:
         g = Games[x]
@@ -144,8 +142,6 @@ async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 #gameID res1 res2
 async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     try:
         n = int(context.args[0])
         if 0 < n < len(Games) + 1:
@@ -172,8 +168,6 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
        await unknown(update, context)
 #gameID pred1 pred2
 async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
     try:
@@ -212,9 +206,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text= text
         )
-async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
+async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):  
     text = 'رده‌بندی:\n'
     i = 1
     player = sorted(Users.values(), reverse=True, key=lambda k : k[1])
@@ -227,9 +219,6 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
-
     s = {}
     for x in Users:
         s[x] = 0
@@ -246,8 +235,6 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 #gameID | None
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     try:
         n = int(context.args[0])
     except:
@@ -262,8 +249,6 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
     text += "\nپیش‌بینی‌های شما"
@@ -280,8 +265,6 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 #gameID | None
 async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_auth(update):
-        await not_authed(update, context)
     def for_game(text, g):
         text += "\n\nبرای بازی {}: {} {} - {} {}".format(g, Games[g][0], Games[g][2], Games[g][3], Games[g][1])
         a = []
