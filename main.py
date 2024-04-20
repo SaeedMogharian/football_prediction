@@ -245,9 +245,19 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    def user_pred_count(user):
+        n = 0
+        for g in Games:
+            if (user, g) in Predictions:
+                n += 1
+        return n
     text = 'رده‌بندی:\n'
     i = 1
-    player = sorted(Users.values(), reverse=True, key=lambda k: k[1])
+    player = []
+    for u in Users:
+        player.append([Users[u][0], Users[u][1], user_pred_count(u)])
+
+    player = sorted(player, reverse=True, key=lambda k: (k[1], -k[2]))
     for x in player:
         text += '{} - {} : {}\n'.format(i, x[0], x[1])
         i += 1
