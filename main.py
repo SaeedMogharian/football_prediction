@@ -57,7 +57,10 @@ def set_game(n, r1, r2, pl=1):
 
 def current_game():
     g = cursor.execute("SELECT * FROM Games WHERE isPlayed = 1").fetchall()
-    return g[-1][0]
+    try:
+        return g[-1][0]
+    except:
+        return 1
 
 
 # {id: (user, game, pred1, pred2)}
@@ -205,43 +208,51 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # gameID pred1 pred2
 async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
-    text = "@{}".format(user.username)
-    try:
-        p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]))
-        av = pred_is_av(p[1])
-        new = pred_is_new(p[0], p[1])
-        if av and new:
-            text += "\n پیش بینی شما اضافه شد:"
-            text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
-            add_pred(p)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not av:
-            text += "\n این بازی برای پیش‌بینی در دسترس نیست"
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not new:
-            text += "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
-            if Predictions[(p[0], p[1])] != p[2:]:
-                edit_pred(p)
-                text += "\n پیش بینی شما تغییر کرد:"
+    if user.id in Users:
+        text = "@{}".format(user.username)
+        try:
+            p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]))
+            av = pred_is_av(p[1])
+            new = pred_is_new(p[0], p[1])
+            if av and new:
+                text += "\n پیش بینی شما اضافه شد:"
                 text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
                 add_pred(p)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not av:
+                text += "\n این بازی برای پیش‌بینی در دسترس نیست"
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not new:
+                text += "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
+                if Predictions[(p[0], p[1])] != p[2:]:
+                    edit_pred(p)
+                    text += "\n پیش بینی شما تغییر کرد:"
+                    text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
+                    add_pred(p)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+        except:
+            text = "لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
+            text += "\n/pred <gameID> <team1 goal> <team2 goal>"
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
             )
-    except:
-        text = "لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
-        text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+    else:
+        text = "لطفا ابتدا /start کنید"
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text
+        chat_id=update.effective_chat.id,
+        text=text
         )
+
 
 
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
