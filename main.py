@@ -298,7 +298,11 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         n = int(context.args[0])
     except:
-        n = current_game() + 1
+        c = current_game()
+        if Games[c][4]:
+            n = c + 1
+        else:
+            n = c
     text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
     text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
     for u in Users:
