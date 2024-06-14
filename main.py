@@ -28,7 +28,7 @@ def create_connection():
 Conn = create_connection()
 cursor = Conn.cursor()
 
-# {id: (username, points) }
+# {id: (username, points)}
 Users = {}
 
 def add_user(user):
@@ -63,7 +63,7 @@ def current_game():
         return 1
 
 
-# {id: (user, game, pred1, pred2)}
+# {(user, game): (pred1, pred2)}
 Predictions = {}
 
 
@@ -256,22 +256,19 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    def user_pred_count(user):
-        n = 0
-        for g in Games:
-            if (user, g) in Predictions:
-                n += 1
-        return n
     text = 'رده‌بندی:\n'
+    
+    player = sorted(list(Users.values()), reverse=True, key=lambda k: k[1])
+    c = player[0][1]
     i = 1
-    player = []
-    for u in Users:
-        player.append([Users[u][0], Users[u][1], user_pred_count(u)])
-
-    player = sorted(player, reverse=True, key=lambda k: (k[1], -k[2]))
+    j = 0
     for x in player:
+        if x[1] < c:
+            i += player.index(x) - j
+            j = player.index(x)
+            c = x[1]
         text += '{} - {} : {}\n'.format(i, x[0], x[1])
-        i += 1
+        
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
