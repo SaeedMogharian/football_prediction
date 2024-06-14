@@ -92,6 +92,8 @@ def edit_pred(p):
         "UPDATE Predictions Set pred1 = {}, pred2 = {} WHERE user = {} AND game = {}".format(p[2], p[3], p[0], p[1]))
     Conn.commit()
 
+# {(user, game): point}
+Pred_Point = {}
 
 def point_calc(g, p1, p2):
     if Games[g][4] == 0:
@@ -116,9 +118,8 @@ def point_calc(g, p1, p2):
 def init():
     rows = cursor.execute("SELECT * FROM Predictions").fetchall()
     for p in rows:
-        if (p[1], p[2]) in Predictions:
-            print("Err")
-        Predictions[(p[1], p[2])] = p[3:]
+        Predictions[(p[0], p[1])] = p[2:4]
+        Pred_Point[(p[0], p[1])] = p[4]
 
     rows = cursor.execute("SELECT * FROM Games").fetchall()
     for g in rows:
@@ -127,7 +128,7 @@ def init():
     rows = cursor.execute("SELECT * FROM Users").fetchall()
     for u in rows:
         Users[u[0]] = u[1:]
-
+    
 from functools import wraps
 
 def auth(func):
@@ -135,7 +136,7 @@ def auth(func):
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
         if user_id not in Users:
-            # print(f"Unauthorized access denied.")
+            print(f"Unauthorized access denied.")
             return
         return await func(update, context)
     return wrapped
@@ -146,7 +147,7 @@ def restricted(func):
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
         if user_id not in Admins:
-            # print(f"Unauthorized access denied.")
+            print(f"Unauthorized access only admin.")
             return
         return await func(update, context)
     return wrapped
@@ -259,7 +260,6 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 edit_pred(p)
                 text += "\n پیش بینی شما تغییر کرد:"
                 text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
-                add_pred(p)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
