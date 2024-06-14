@@ -165,11 +165,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = 'بازی‌ها:\n'
-    for x in Games:
-        g = Games[x]
+    try:
+        n = context.args[0]
+    except:
+        n = 12
+    c = current_game()
+    a = max(c - n/3, 1)
+    r = range(a, min(c + n - a + 1, len(Games) + 1))
+    while a in r and a in Games:
+        g = Games[a]
         if g[4] == 0:
             g = (g[0], g[1], "TBD", "TBD", g[4])
-        text += '{}: {} {} - {} {}\n'.format(x, g[0], g[2], g[3], g[1])
+        text += '{}: {} {} - {} {}\n'.format(a, g[0], g[2], g[3], g[1])
+        a += 1
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
