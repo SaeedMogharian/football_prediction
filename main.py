@@ -183,12 +183,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = 'بازی‌ها:\n'
     try:
-        n = context.args[0]
+        n = int(context.args[0])
     except:
         n = 12
     c = current_game()
-    a = max(c - n/3, 1)
-    r = range(a, min(c + n - a + 1, len(Games) + 1))
+    a = max(c - n//3, 1)
+    r = range(a, min(a + n, len(Games) + 1))
     while a in r and a in Games:
         g = Games[a]
         if g[4] == 0:
