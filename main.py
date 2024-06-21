@@ -62,6 +62,23 @@ def current_game():
     except:
         return 1
 
+from bs4 import BeautifulSoup
+import requests
+
+def fetch_result(n):
+    
+    query = 'https://www.google.com/search?q=' + Games[n][0] + '+vs+' + Games[n][1]
+    source = requests.get(query, headers={'accept-language':'en-US,en;q=0.9'}).text
+    soup = BeautifulSoup(source, 'lxml')
+    soup = soup.find_all('div', class_="BNeawe deIvCb AP7Wnd")
+
+    print(n, soup[1].text, soup[2].text)
+    
+    if soup[0].text.split(" ")[0] == Games[n][0]:
+        set_game(n, soup[1].text, soup[2].text)
+    else :
+        set_game(n, soup[2].text, soup[1].text)
+    
 
 # {(user, game): (pred1, pred2)}
 Predictions = {}
@@ -369,6 +386,7 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             g = a
     except:
         g = current_game()
+        fetch_result(g)
     
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
