@@ -155,21 +155,20 @@ def restricted(func):
 
 '''commands'''
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     text = 'سلام {}'.format(user.first_name)
 
     if user.id not in Users:
-            # add_user(user)
-            text += '\n\n شرمنده عضویت نداریم!'
-    # text += '\nبه بات پیش‌بینی خوش اومدی!'
-    # text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-    # text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-    else:
-        text += '\nبه بات پیش‌بینی خوش اومدی!'
-        text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-        text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+            add_user(user)
+            # text += '\n\n شرمنده عضویت نداریم!'
+    text += '\nبه بات پیش‌بینی خوش اومدی!'
+    text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
+    text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+    # else:
+    #     text += '\nبه بات پیش‌بینی خوش اومدی!'
+    #     text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
+        # text += "\n/pred <gameID> <team1 goal> <team2 goal>"
 
     
     
@@ -344,7 +343,6 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for x in m:
         text += "\n{}: {} {} - {} {}: {}".format(x, Games[x][0], m[x][0], m[x][1], Games[x][1],
                                                  point_calc(x, m[x][0], m[x][1]))
-
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text
@@ -365,17 +363,18 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += "\n{}: {} - {}: {}".format(x[1], x[2], x[3], x[0])
         return text
 
-    t = ":تمام پیش‌‌بینی‌ها"
     try:
-        g = context.args[0]
-        if g.isnumeric() and 0 < int(g) < len(Games) + 1:
-            t = for_game(t, int(g))
-        elif g == "t":
-            for i in Games:
-                t = for_game(t, i)
+        a = int(context.args[0])
+        if 0 < a < len(Games) + 1:
+            g = a
     except:
         g = current_game()
-        t = for_game(t, int(g))
+    
+    if Games[g][4]:
+        t = ":تمام پیش‌‌بینی‌ها"
+        t = for_game(t, g)
+    else:
+        t= "بازی شماره {} هنوز برگزار نشده است!".format(g)
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
