@@ -72,7 +72,7 @@ def fetch_result(n):
     soup = BeautifulSoup(source, 'lxml')
     soup = soup.find_all('div', class_="BNeawe deIvCb AP7Wnd")
 
-    print(n, soup[1].text, soup[2].text)
+    print("Google Says: ", n, soup[1].text, soup[2].text)
     
     if soup[0].text.split(" ")[0] == Games[n][0]:
         set_game(n, soup[1].text, soup[2].text)
@@ -204,6 +204,7 @@ async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
         n = 12
     c = current_game()
     a = max(c - n//3, 1)
+    a = min(len(Games) - n, a)
     r = range(a, min(a + n, len(Games) + 1))
     while a in r and a in Games:
         g = Games[a]
@@ -386,7 +387,10 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             g = a
     except:
         g = current_game()
-        fetch_result(g)
+        try:
+            fetch_result(g)
+        except:
+            print("Google Didn't Respond!")
     
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
