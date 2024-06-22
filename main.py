@@ -354,6 +354,11 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @auth
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        n = int(context.args[0])
+    except:
+        n = 10
+
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
     text += "\nآمار شما:\n"
@@ -365,11 +370,11 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
             s.append(mp[g][2])
     
     c = current_game()
-    d = min(len(mp),c)*100//c,2
+    d = min(len(mp),c)*100//c
     text += "\n {} پیش‌بینی ".format(len(mp))
     text += "\n پیش بینی {} درصد بازی‌ها تا کنون".format(d)
     text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
-    text += "\n از هر پیش بینی به طور میانگین {} امتیاز کسب کرده‌اید. ".format(round(sum(s)/c,2))
+    text += "\n دریافت میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s)/min(c, len(s)),2))
 
 
     text += "\n\nآخرین پیش‌بینی‌ها "
@@ -379,12 +384,12 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     while g in r:
         if g in mp:
             i += 1
-            if i >= 10:
+            if i >= n:
                 break
         g -= 1
     i = 0
     g = max(g, 1)
-    while g in r and i < 10:
+    while g in r and i < n:
         if g in mp:
             sc = mp[g][2]
             if not Games[g][4]:
