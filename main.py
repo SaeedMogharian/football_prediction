@@ -48,10 +48,10 @@ def update_scores(s):
 # {id: (team1, team2, res1, res2, isPlayed)}
 Games = {}
 
-
 def set_game(n, r1, r2, pl=1):
     if Games[n]!=(Games[n][0], Games[n][1], r1, r2, pl):
         Games[n] = (Games[n][0], Games[n][1], r1, r2, pl)
+        score_calc(n)
         cursor.execute("UPDATE Games Set res1 = {}, res2 = {}, isPlayed = {} WHERE id = {}".format(r1, r2, pl, n))
         Conn.commit()
 
@@ -81,7 +81,7 @@ def fetch_result(n):
         set_game(n, soup[2].text, soup[1].text)
     
 
-# {(user, game): (pred1, pred2)}
+# {(user, game): (pred1, pred2, score)}
 Predictions = {}
 
 
@@ -98,20 +98,17 @@ def pred_is_av(g):
 
 
 def add_pred(p):
-    Predictions[(p[0], p[1])] = (p[2], p[3])
+    Predictions[(p[0], p[1])] = (p[2], p[3], p[4])
     cursor.execute(
-        "INSERT INTO Predictions (user, game, pred1, pred2) VALUES ({}, {}, {}, {});".format(p[0], p[1], p[2], p[3]))
+        "INSERT INTO Predictions (user, game, pred1, pred2, score) VALUES ({}, {}, {}, {}, {});".format(p[0], p[1], p[2], p[3], p[4]))
     Conn.commit()
 
 
 def edit_pred(p):
-    Predictions[(p[0], p[1])] = (p[2], p[3])
+    Predictions[(p[0], p[1])] = p[2:]
     cursor.execute(
-        "UPDATE Predictions Set pred1 = {}, pred2 = {} WHERE user = {} AND game = {}".format(p[2], p[3], p[0], p[1]))
+        "UPDATE Predictions Set pred1 = {}, pred2 = {} , score = {} WHERE user = {} AND game = {}".format(p[2], p[3], p[4], p[0], p[1]))
     Conn.commit()
-
-# {(user, game): point}
-Pred_Point = {}
 
 def point_calc(g, p1, p2):
     if Games[g][4] == 0:
@@ -132,12 +129,20 @@ def point_calc(g, p1, p2):
         point += 1
     return point
 
+def score_calc(g):
+    for u in Users:
+        if (u, g) in Predictions:
+            x = Predictions[(u, g)]
+            p = point_calc(g, x[0], x[1])
+            if Predictions[(u, g)] != (x[0], x[1], p):
+                Predictions[(u, g)] = (x[0], x[1], p)
+                edit_pred((u, g, x[0], x[1], p))
+
 
 def init():
     rows = cursor.execute("SELECT * FROM Predictions").fetchall()
     for p in rows:
-        Predictions[(p[0], p[1])] = p[2:4]
-        Pred_Point[(p[0], p[1])] = p[4]
+        Predictions[(p[0], p[1])] = p[2:]
 
     rows = cursor.execute("SELECT * FROM Games").fetchall()
     for g in rows:
@@ -165,7 +170,7 @@ def restricted(func):
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
         if user_id not in Admins:
-            print(f"Unauthorized access only admin.")
+            print(f"Unauthorized only admin access.")
             return
         return await func(update, context)
     return wrapped
@@ -187,9 +192,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     #     text += '\nبه بات پیش‌بینی خوش اومدی!'
     #     text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
         # text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-
-    
-    
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -255,7 +257,7 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
     try:
-        p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]))
+        p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]), 0)
         av = pred_is_av(p[1])
         new = pred_is_new(p[0], p[1])
         if av and new:
@@ -319,7 +321,7 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         s[x] = 0
     for x in Predictions:
         if Games[x[1]][4]:
-            a = point_calc(x[1], Predictions[x][0], Predictions[x][1])
+            a = Predictions[x][2]
             s[x[0]] += a
     update_scores(s)
 
@@ -354,14 +356,42 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
-    text += "\nپیش‌بینی‌های شما"
-    m = {}
+    text += "\nآمار شما:\n"
+    mp = {}
+    s = []
     for g in Games:
         if (user.id, g) in Predictions:
-            m[g] = Predictions[(user.id, g)]
-    for x in m:
-        text += "\n{}: {} {} - {} {}: {}".format(x, Games[x][0], m[x][0], m[x][1], Games[x][1],
-                                                 point_calc(x, m[x][0], m[x][1]))
+            mp[g] = Predictions[(user.id, g)]
+            s.append(mp[g][2])
+    
+    c = current_game()
+    d = min(len(mp),c)*100//c,2
+    text += "\n {} پیش‌بینی ".format(len(mp))
+    text += "\n پیش بینی {} درصد بازی‌ها تا کنون".format(d)
+    text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
+    text += "\n از هر پیش بینی به طور میانگین {} امتیاز کسب کرده‌اید. ".format(round(sum(s)/c,2))
+
+
+    text += "\n\nآخرین پیش‌بینی‌ها "
+    g = max(list(mp.keys()))
+    i = 0
+    r = range(1, g + 1)
+    while g in r:
+        if g in mp:
+            i += 1
+            if i >= 10:
+                break
+        g -= 1
+    i = 0
+    g = max(g, 1)
+    while g in r and i < 10:
+        if g in mp:
+            sc = mp[g][2]
+            if not Games[g][4]:
+                sc = "np"
+            text += "\n{}: {} {} - {} {}: {}".format(g, Games[g][0], mp[g][0], mp[g][1], Games[g][1], sc)
+            i += 1
+        g += 1
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text
@@ -376,7 +406,7 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for u in Users:
             if (u, g) in Predictions:
                 m = Predictions[(u, g)]
-                a.append([point_calc(g, m[0], m[1]), Users[u][0], m[0], m[1]])
+                a.append([m[2], Users[u][0], m[0], m[1]])
         a.sort(reverse=True)
         for x in a:
             text += "\n{}: {} - {}: {}".format(x[1], x[2], x[3], x[0])
