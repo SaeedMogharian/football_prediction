@@ -62,6 +62,23 @@ def current_game():
     except:
         return 1
 
+from bs4 import BeautifulSoup
+import requests
+
+def fetch_result(n):
+    
+    query = 'https://www.google.com/search?q=' + Games[n][0] + '+vs+' + Games[n][1]
+    source = requests.get(query, headers={'accept-language':'en-US,en;q=0.9'}).text
+    soup = BeautifulSoup(source, 'lxml')
+    soup = soup.find_all('div', class_="BNeawe deIvCb AP7Wnd")
+
+    print("Google Says: ", n, soup[1].text, soup[2].text)
+    
+    if soup[0].text.split(" ")[0] == Games[n][0]:
+        set_game(n, soup[1].text, soup[2].text)
+    else :
+        set_game(n, soup[2].text, soup[1].text)
+    
 
 # {(user, game): (pred1, pred2)}
 Predictions = {}
@@ -187,6 +204,7 @@ async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
         n = 12
     c = current_game()
     a = max(c - n//3, 1)
+    a = min(len(Games) - n, a)
     r = range(a, min(a + n, len(Games) + 1))
     while a in r and a in Games:
         g = Games[a]
@@ -369,6 +387,10 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             g = a
     except:
         g = current_game()
+        try:
+            fetch_result(g)
+        except:
+            print("Google Didn't Respond!")
     
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
