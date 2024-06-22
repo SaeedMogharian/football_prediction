@@ -96,13 +96,16 @@ def pred_is_av(g):
         return False
     return True
 
+def pred_is_possib(p):
+    if p[1] in Games and p[2]>=0 and p[3]>=0:
+        return True
+    return False
 
 def add_pred(p):
     Predictions[(p[0], p[1])] = (p[2], p[3], p[4])
     cursor.execute(
         "INSERT INTO Predictions (user, game, pred1, pred2, score) VALUES ({}, {}, {}, {}, {});".format(p[0], p[1], p[2], p[3], p[4]))
     Conn.commit()
-
 
 def edit_pred(p):
     Predictions[(p[0], p[1])] = p[2:]
@@ -260,32 +263,35 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
         p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]), 0)
         av = pred_is_av(p[1])
         new = pred_is_new(p[0], p[1])
-        if av and new:
-            text += "\n پیش بینی شما اضافه شد:"
-            text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
-            add_pred(p)
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not av:
-            text += "\n این بازی برای پیش‌بینی در دسترس نیست"
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-        elif not new:
-            text += "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
-            if Predictions[(p[0], p[1])] != p[2:]:
-                edit_pred(p)
-                text += "\n پیش بینی شما تغییر کرد:"
+        if pred_is_possib(p):
+            if av and new:
+                text += "\n پیش بینی شما اضافه شد:"
                 text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
+                add_pred(p)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not av:
+                text += "\n این بازی برای پیش‌بینی در دسترس نیست"
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+            elif not new:
+                text += "\nشما قبلا این بازی را پیش بینی کرده‌اید" + "\n لطفا دقت کنید :)\n"
+                if Predictions[(p[0], p[1])] != p[2:]:
+                    edit_pred(p)
+                    text += "\n پیش بینی شما تغییر کرد:"
+                    text += "\n{}: {} {} - {} {}".format(p[1], Games[p[1]][0], p[2], p[3], Games[p[1]][1])
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=text
+                )
+        else:
+            raise ValueError
     except:
-            text = "لطفا طبق الگوی خواسته شده پیش‌بینی را وارد کنید"
+            text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
             text += "\n/pred <gameID> <team1 goal> <team2 goal>"
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -361,7 +367,7 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_message.from_user
     text = "@{}".format(user.username)
-    text += "\nآمار شما:\n"
+    text += "\nآمار شما:"
     mp = {}
     s = []
     for g in Games:
@@ -371,7 +377,8 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     c = current_game()
     d = min(len(mp),c)*100//c
-    text += "\n {} پیش‌بینی ".format(len(mp))
+    text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(c)
+    text += "\n امتیاز ثبت شده: {}".format(Users[user.id][1])
     text += "\n پیش بینی {} درصد بازی‌ها تا کنون".format(d)
     text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
     text += "\n دریافت میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s)/min(c, len(s)),2))
