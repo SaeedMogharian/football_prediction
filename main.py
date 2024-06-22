@@ -50,9 +50,10 @@ Games = {}
 
 
 def set_game(n, r1, r2, pl=1):
-    Games[n] = (Games[n][0], Games[n][1], r1, r2, pl)
-    cursor.execute("UPDATE Games Set res1 = {}, res2 = {}, isPlayed = {} WHERE id = {}".format(r1, r2, pl, n))
-    Conn.commit()
+    if Games[n]!=(Games[n][0], Games[n][1], r1, r2, pl):
+        Games[n] = (Games[n][0], Games[n][1], r1, r2, pl)
+        cursor.execute("UPDATE Games Set res1 = {}, res2 = {}, isPlayed = {} WHERE id = {}".format(r1, r2, pl, n))
+        Conn.commit()
 
 
 def current_game():
