@@ -377,11 +377,11 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     c = current_game()
     d = min(len(mp),c)*100//c
-    text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(c)
+    text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(len(mp),c)
     text += "\n امتیاز ثبت شده: {}".format(Users[user.id][1])
-    text += "\n پیش بینی {} درصد بازی‌ها تا کنون".format(d)
+    text += "\n پیش بینی {}٪ بازی‌ها تا کنون".format(d)
     text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
-    text += "\n دریافت میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s)/min(c, len(s)),2))
+    text += "\n میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s)/min(c, len(s)),2))
 
 
     text += "\n\nآخرین پیش‌بینی‌ها "
