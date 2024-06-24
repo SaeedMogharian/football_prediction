@@ -167,7 +167,9 @@ def auth(func):
         return await func(update, context)
     return wrapped
 
-Admins = [102285108]
+f = open("admins", "r")
+Admins = set(map(int, f.read().split()))
+f.close()
 def restricted(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
@@ -338,7 +340,7 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # gameID | None
-@auth
+@restricted
 async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         n = int(context.args[0])
@@ -446,6 +448,25 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=t
     )
 
+@restricted
+async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        us = context.args[0]
+        f = 0
+        for k in Users:
+            if k[0] == us:
+                f = k
+                break
+        if f:
+            del Users[f]
+        else:
+            text = " مشخصات کاربر اشتباه وارد شده است"
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+    except:
+        await unknown(update, context)
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
@@ -465,9 +486,9 @@ if __name__ == '__main__':
     res_handler = CommandHandler('res', res)
 
     warn_handler = CommandHandler('warn', warn)
-
     calc_handler = CommandHandler('calc', calc)
     set_handler = CommandHandler('set', set)
+    delu_handler = CommandHandler('delu', delu)
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(start_handler)
     application.add_handler(pred_handler)
@@ -479,5 +500,6 @@ if __name__ == '__main__':
     application.add_handler(warn_handler)
     application.add_handler(calc_handler)
     application.add_handler(set_handler)
+    application.add_handler(delu_handler)
     application.add_handler(unknown_handler)
     application.run_polling()
