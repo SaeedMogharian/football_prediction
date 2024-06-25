@@ -14,7 +14,6 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-
 def create_connection():
     connection = None
     try:
@@ -432,10 +431,11 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             g = a
     except:
         g = current_game()
-        try:
-            fetch_result(g)
-        except:
-            print("Google Didn't Respond!")
+        
+    try:
+        fetch_result(g)
+    except:
+        print("Google Didn't Respond!")
     
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
