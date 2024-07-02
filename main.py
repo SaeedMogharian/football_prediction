@@ -50,7 +50,8 @@ Games = {}
 def set_game(n, r1, r2, pl=1):
     if Games[n]!=(Games[n][0], Games[n][1], r1, r2, pl):
         Games[n] = (Games[n][0], Games[n][1], r1, r2, pl)
-        score_calc(n)
+        if pl:
+            score_calc(n)
         cursor.execute("UPDATE Games Set res1 = {}, res2 = {}, isPlayed = {} WHERE id = {}".format(r1, r2, pl, n))
         Conn.commit()
 
@@ -89,7 +90,6 @@ def pred_is_new(u, g):
         return True
     return False
 
-
 def pred_is_av(g):
     if Games[g][4]:
         return False
@@ -114,7 +114,7 @@ def edit_pred(p):
 
 def point_calc(g, p1, p2):
     if Games[g][4] == 0:
-        return 'np'
+        return 0
     r1 = Games[g][2]
     r2 = Games[g][3]
     # if(AND(Matches!C2=Pre!C2,Matches!D2=Pre!D2),10,
@@ -210,8 +210,8 @@ async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         n = 12
     c = current_game()
-    a = max(c - n//3, 1)
-    a = min(len(Games) - n, a)
+    a = max(c - n//4, 1)
+    a = min(len(Games) - n + 1, a)
     r = range(a, min(a + n, len(Games) + 1))
     while a in r and a in Games:
         g = Games[a]
@@ -232,15 +232,11 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         n = int(context.args[0])
         if 0 < n < len(Games) + 1:
-            try:
-                p1 = int(context.args[1])
-                p2 = int(context.args[2])
-                set_game(n, p1, p2)
-                text = "نتیجه ثبت شد"
-                text += "\n{}: {} {} - {} {}".format(n, Games[n][0], Games[n][2], Games[n][3], Games[n][1])
-            except:
-                set_game(n, 0, 0, 0)
-                text = "بازی برای پیش‌بینی فعال شد"
+            p1 = int(context.args[1])
+            p2 = int(context.args[2])
+            set_game(n, p1, p2)
+            text = "نتیجه ثبت شده به صورت دستی تغییر کرد"
+            text += "\n{}: {} {} - {} {}".format(n, Games[n][0], Games[n][2], Games[n][3], Games[n][1])
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
@@ -254,6 +250,55 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await unknown(update, context)
 
+# gameID
+@restricted
+async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        n = int(context.args[0])
+        if not (0 < n < len(Games) + 1) or Games[n][4]:
+            text = "بازی {} فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+        else:
+            set_game(n, 0, 0, 1)
+            text = "بازی: "
+            text += "\n{}: {} -  {}".format(n, Games[n][0], Games[n][1])
+            text += "\n شروع شد و فرصت پیش‌بینی به پایان رسید."
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+    except:
+        await unknown(update, context)
+        return
+
+    
+# gameID
+@restricted
+async def unplay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        n = int(context.args[0])
+        if not (0 < n < len(Games) + 1) or not(Games[n][4]):
+            text = "بازی {} غیر فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+            )
+        else:
+            set_game(n, 0, 0, 0)
+            text = "بازی: "
+            text += "\n{}: {} - {}".format(n, Games[n][0], Games[n][1])
+            text += "\n برای پیش‌بینی فعال شد."
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=text
+    )
+    except:
+        await unknown(update, context)
+        return
+    
 
 # gameID pred1 pred2
 @auth
@@ -432,13 +477,13 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         g = current_game()
         
-    try:
-        fetch_result(g)
-    except:
-        print("Google Didn't Respond!")
     
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
+        try:
+            fetch_result(g)
+        except:
+            print("Google Didn't Respond!")
         t = for_game(t, g)
     else:
         t= "بازی شماره {} هنوز برگزار نشده است!".format(g)
@@ -447,26 +492,6 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=t
     )
-
-@restricted
-async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        us = context.args[0]
-        f = 0
-        for k in Users:
-            if k[0] == us:
-                f = k
-                break
-        if f:
-            del Users[f]
-        else:
-            text = " مشخصات کاربر اشتباه وارد شده است"
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-    except:
-        await unknown(update, context)
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
@@ -488,7 +513,8 @@ if __name__ == '__main__':
     warn_handler = CommandHandler('warn', warn)
     calc_handler = CommandHandler('calc', calc)
     set_handler = CommandHandler('set', set)
-    delu_handler = CommandHandler('delu', delu)
+    play_handler = CommandHandler('play', play)
+    unplay_handler = CommandHandler('unplay', unplay)
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(start_handler)
     application.add_handler(pred_handler)
@@ -500,6 +526,7 @@ if __name__ == '__main__':
     application.add_handler(warn_handler)
     application.add_handler(calc_handler)
     application.add_handler(set_handler)
-    application.add_handler(delu_handler)
+    application.add_handler(play_handler)
+    application.add_handler(unplay_handler)
     application.add_handler(unknown_handler)
     application.run_polling()
