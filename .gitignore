@@ -1,5 +1,4 @@
-token
-*.csv
 .DS_Store
 db.sqlite3
-admins
+settings.json
+venv/

@@ -1,18 +1,21 @@
-# import nest_asyncio
-# nest_asyncio.apply()
-
 import logging
+import json
 from telegram import Update
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler, ContextTypes
 import sqlite3
 
-f = open("token", "r")
-BOT_TOKEN = f.read()
-f.close()
+with open('settings.json', 'r') as f:
+    settings = json.load(f)
+
+BOT_TOKEN = settings["token"]
+ADMINS = set(map(int, settings["admins"]))
+IS_OPEN = settings["is_open"]
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+
 
 def create_connection():
     connection = None
@@ -30,6 +33,7 @@ cursor = Conn.cursor()
 # {id: (username, points)}
 Users = {}
 
+
 def add_user(user):
     Users[user.id] = (user.username, 0)
     cursor.execute("INSERT INTO Users VALUES ({}, '{}', {})".format(user.id, user.username, 0))
@@ -43,16 +47,19 @@ def update_scores(s):
             cursor.execute("UPDATE Users Set score = {} WHERE t_id = {}".format(s[x], x))
             Conn.commit()
 
+
 def del_user(uid):
     del Users[uid]
     cursor.execute("DELETE FROM Users WHERE t_id={};".format(uid))
     Conn.commit()
 
+
 # {id: (team1, team2, res1, res2, isPlayed)}
 Games = {}
 
+
 def set_game(n, r1, r2, pl=1):
-    if Games[n]!=(Games[n][0], Games[n][1], r1, r2, pl):
+    if Games[n] != (Games[n][0], Games[n][1], r1, r2, pl):
         Games[n] = (Games[n][0], Games[n][1], r1, r2, pl)
         if pl:
             score_calc(n)
@@ -67,23 +74,24 @@ def current_game():
     except:
         return 1
 
+
 from bs4 import BeautifulSoup
 import requests
 
+
 def fetch_result(n):
-    
     query = 'https://www.google.com/search?q=' + Games[n][0] + '+vs+' + Games[n][1]
-    source = requests.get(query, headers={'accept-language':'en-US,en;q=0.9'}).text
+    source = requests.get(query, headers={'accept-language': 'en-US,en;q=0.9'}).text
     soup = BeautifulSoup(source, 'lxml')
     soup = soup.find_all('div', class_="BNeawe deIvCb AP7Wnd")
 
     print("Google Says: ", n, soup[1].text, soup[2].text)
-    
+
     if soup[0].text.split(" ")[0] == Games[n][0]:
         set_game(n, soup[1].text, soup[2].text)
-    else :
+    else:
         set_game(n, soup[2].text, soup[1].text)
-    
+
 
 # {(user, game): (pred1, pred2, score)}
 Predictions = {}
@@ -94,27 +102,36 @@ def pred_is_new(u, g):
         return True
     return False
 
+
 def pred_is_av(g):
     if Games[g][4]:
         return False
     return True
 
+
 def pred_is_possib(p):
-    if p[1] in Games and p[2]>=0 and p[3]>=0:
+    if p[1] in Games and p[2] >= 0 and p[3] >= 0:
         return True
     return False
+
 
 def add_pred(p):
     Predictions[(p[0], p[1])] = (p[2], p[3], p[4])
     cursor.execute(
-        "INSERT INTO Predictions (user, game, pred1, pred2, score) VALUES ({}, {}, {}, {}, {});".format(p[0], p[1], p[2], p[3], p[4]))
+        "INSERT INTO Predictions (user, game, pred1, pred2, score) VALUES ({}, {}, {}, {}, {});".format(p[0], p[1],
+                                                                                                        p[2], p[3],
+                                                                                                        p[4]))
     Conn.commit()
+
 
 def edit_pred(p):
     Predictions[(p[0], p[1])] = p[2:]
     cursor.execute(
-        "UPDATE Predictions Set pred1 = {}, pred2 = {} , score = {} WHERE user = {} AND game = {}".format(p[2], p[3], p[4], p[0], p[1]))
+        "UPDATE Predictions Set pred1 = {}, pred2 = {} , score = {} WHERE user = {} AND game = {}".format(p[2], p[3],
+                                                                                                          p[4], p[0],
+                                                                                                          p[1]))
     Conn.commit()
+
 
 def point_calc(g, p1, p2):
     if Games[g][4] == 0:
@@ -134,6 +151,7 @@ def point_calc(g, p1, p2):
     if int(p1) == int(r1) or int(p2) == int(r2):
         point += 1
     return point
+
 
 def score_calc(g):
     for u in Users:
@@ -157,8 +175,10 @@ def init():
     rows = cursor.execute("SELECT * FROM Users").fetchall()
     for u in rows:
         Users[u[0]] = u[1:]
-    
+
+
 from functools import wraps
+
 
 def auth(func):
     @wraps(func)
@@ -168,25 +188,24 @@ def auth(func):
             print(f"Unauthorized access denied.")
             return
         return await func(update, context)
+
     return wrapped
 
-f = open("admins", "r")
-Admins = set(map(int, f.read().split()))
-f.close()
+
 def restricted(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
-        if user_id not in Admins:
+        if user_id not in ADMINS:
             print(f"Unauthorized only admin access.")
             return
         return await func(update, context)
+
     return wrapped
 
 
-IS_OPEN = False
-
 '''commands'''
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
@@ -204,17 +223,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += '\nبه بات پیش‌بینی خوش اومدی!'
             text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
             text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-        
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text
         )
     except:
         await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="بدون داشتن یوزرنیم نمی‌توانید از بات استفاده کنید"
+            chat_id=update.effective_chat.id,
+            text="بدون داشتن یوزرنیم نمی‌توانید از بات استفاده کنید"
         )
-            
+
 
 @auth
 async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -224,7 +243,7 @@ async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         n = 12
     c = current_game()
-    a = max(c - n//4, 1)
+    a = max(c - n // 4, 1)
     a = min(len(Games) - n + 1, a)
     r = range(a, min(a + n, len(Games) + 1))
     while a in r and a in Games:
@@ -264,6 +283,7 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await unknown(update, context)
 
+
 # gameID
 @restricted
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,13 +308,13 @@ async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await unknown(update, context)
         return
 
-    
+
 # gameID
 @restricted
 async def unplay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         n = int(context.args[0])
-        if not (0 < n < len(Games) + 1) or not(Games[n][4]):
+        if not (0 < n < len(Games) + 1) or not (Games[n][4]):
             text = "بازی {} غیر فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -308,11 +328,11 @@ async def unplay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=text
-    )
+            )
     except:
         await unknown(update, context)
         return
-    
+
 
 # gameID pred1 pred2
 @auth
@@ -351,18 +371,18 @@ async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             raise ValueError
     except:
-            text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
-            text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=text
-            )
-    
+        text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
+        text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text
+        )
+
 
 @auth
 async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = 'رده‌بندی:\n'
-    
+
     player = sorted(list(Users.values()), reverse=True, key=lambda k: k[1])
     c = player[0][1]
     i = 1
@@ -373,12 +393,12 @@ async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             j = player.index(x)
             c = x[1]
         text += '{} - {} : {}\n'.format(i, x[0], x[1])
-        
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=text
     )
+
 
 @restricted
 async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -396,6 +416,7 @@ async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id,
         text=text
     )
+
 
 # gameID | None
 @restricted
@@ -418,6 +439,7 @@ async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 
+
 @auth
 async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -434,15 +456,14 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (user.id, g) in Predictions:
             mp[g] = Predictions[(user.id, g)]
             s.append(mp[g][2])
-    
+
     c = current_game()
-    d = min(len(mp),c)*100//c
-    text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(len(mp),c)
+    d = min(len(mp), c) * 100 // c
+    text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(len(mp), c)
     text += "\n امتیاز ثبت شده: {}".format(Users[user.id][1])
     text += "\n پیش بینی {}٪ بازی‌ها تا کنون".format(d)
     text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
-    text += "\n میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s)/min(c, len(s)),2))
-
+    text += "\n میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s) / min(c, len(s)), 2))
 
     text += "\n\nآخرین پیش‌بینی‌ها "
     g = max(list(mp.keys()))
@@ -469,6 +490,7 @@ async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=text
     )
 
+
 # gameID | None
 @auth
 async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -490,8 +512,7 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             g = a
     except:
         g = current_game()
-        
-    
+
     if Games[g][4]:
         t = ":تمام پیش‌‌بینی‌ها"
         try:
@@ -500,12 +521,13 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print("Google Didn't Respond!")
         t = for_game(t, g)
     else:
-        t= "بازی شماره {} هنوز برگزار نشده است!".format(g)
+        t = "بازی شماره {} هنوز برگزار نشده است!".format(g)
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=t
     )
+
 
 @restricted
 async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -517,14 +539,14 @@ async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 uid = x
                 break
         if uid:
-            if uid in Admins:
+            if uid in ADMINS:
                 raise KeyError
-            if Users[uid][1]!=0:
+            if Users[uid][1] != 0:
                 try:
                     f = context.args[1]
                 except:
                     f = None
-                if f=="1" or f=="f":
+                if f == "1" or f == "f":
                     del_user(uid)
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
@@ -546,6 +568,7 @@ async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         await unknown(update, context)
         return
+
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(

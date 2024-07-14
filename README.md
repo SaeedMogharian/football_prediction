@@ -1,18 +1,57 @@
 # Football Prediction Bot
-A simple one-day project that creates a telegram bot for a friend group; letting them to predict football matches and compete.
+A simple project that creates a telegram bot for a friend group; letting them to predict football matches and compete.
 
 ## Requirements
 - python
     - install the requirements using: pip install re.txt
-- a telegram bot token
-    - save it in a file name token (no suffix!)
+- a setting.json file
+```json
+{  
+    "is_open":  true/false, 
+    "token":    "YourBotToken",   
+    "admins":   ["Admin1NumeralTelgeramID", "Admin2NumeralTelgeramID", ...]      
+}  
+```
 ### db.sqlite3
-- Games
-    - id, Team1, Team2, Res1, Res2, isPlayed (you should manually add them)
-- Users
-    - t_id, username, score
-- Predictions
-    - id, UserID, GameID, Pred1, Pred2
+
+```sql
+# Teams
+CREATE TABLE "Teams" ( 
+  "Name" TEXT NOT NULL UNIQUE,
+   PRIMARY KEY("Name") 
+   )
+
+# Games
+CREATE TABLE "Games" ( 
+  "id" INTEGER NOT NULL UNIQUE,
+   "team1" TEXT, 
+   "team2" TEXT, 
+   "res1" INTEGER, 
+   "res2" INTEGER, 
+   "isPlayed" INTEGER COLLATE BINARY, 
+   PRIMARY KEY("id" AUTOINCREMENT), 
+   FOREIGN KEY("team2") REFERENCES "Teams"("Name"),
+   FOREIGN KEY("team1") REFERENCES "Teams"("Name") 
+   )
+
+# Users
+CREATE TABLE "Users" ( 
+  "t_id" INTEGER NOT NULL UNIQUE, 
+  "username" TEXT UNIQUE, 
+  "score" INTEGER DEFAULT 0 )
+
+# Predictions
+CREATE TABLE "Predictions" ( 
+  "user" INTEGER NOT NULL, 
+  "game" INTEGER NOT NULL, 
+  "pred1" INTEGER, 
+  "pred2" INTEGER, 
+  "score" INTEGER, 
+  PRIMARY KEY("user","game"), 
+  FOREIGN KEY("user") REFERENCES "Users"("t_id"), 
+  FOREIGN KEY("game") REFERENCES "Games"("id") )
+```
+
 
 ## Commands
 ### User commands
@@ -46,9 +85,9 @@ A simple one-day project that creates a telegram bot for a friend group; letting
   - send a message in the current chat, mention all users that don't send prediction for the game
 
 ### Need to be implemented:
-- admin recognition
 - authentication from admin for new users
-- save each prediction point to reduce calculation
+- different tournament implemetation
+- different groups implementation
 
 Helpful Documentation:
 [https://github.com/python-telegram-bot/python-telegram-bot]
