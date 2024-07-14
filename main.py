@@ -43,6 +43,10 @@ def update_scores(s):
             cursor.execute("UPDATE Users Set score = {} WHERE t_id = {}".format(s[x], x))
             Conn.commit()
 
+def del_user(uid):
+    del Users[uid]
+    cursor.execute("DELETE FROM Users WHERE t_id={};".format(uid))
+    Conn.commit()
 
 # {id: (team1, team2, res1, res2, isPlayed)}
 Games = {}
@@ -180,27 +184,37 @@ def restricted(func):
     return wrapped
 
 
+IS_OPEN = False
+
 '''commands'''
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_message.from_user
     text = 'سلام {}'.format(user.first_name)
 
-    if user.id not in Users:
-            add_user(user)
-            # text += '\n\n شرمنده عضویت نداریم!'
-    text += '\nبه بات پیش‌بینی خوش اومدی!'
-    text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-    text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-    # else:
-    #     text += '\nبه بات پیش‌بینی خوش اومدی!'
-    #     text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-        # text += "\n/pred <gameID> <team1 goal> <team2 goal>"
-
-    await context.bot.send_message(
+    try:
+        if not user.username:
+            raise NameError
+        if user.id not in Users:
+            if IS_OPEN:
+                add_user(user)
+            else:
+                text += '\n\n شرمنده عضویت نداریم!'
+        if user.id in Users:
+            text += '\nبه بات پیش‌بینی خوش اومدی!'
+            text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
+            text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+        
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text
+        )
+    except:
+        await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=text
-    )
+        text="بدون داشتن یوزرنیم نمی‌توانید از بات استفاده کنید"
+        )
+            
 
 @auth
 async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -493,6 +507,46 @@ async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=t
     )
 
+@restricted
+async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        u = context.args[0]
+        uid = None
+        for x in Users:
+            if Users[x][0] == u:
+                uid = x
+                break
+        if uid:
+            if uid in Admins:
+                raise KeyError
+            if Users[uid][1]!=0:
+                try:
+                    f = context.args[1]
+                except:
+                    f = None
+                if f=="1" or f=="f":
+                    del_user(uid)
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"یوزر {u} پاک شد!"
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text=f"یوزر امتیاز دارد!"
+                    )
+            else:
+                del_user(uid)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"یوزر {u} پاک شد!"
+                )
+        else:
+            raise KeyError
+    except:
+        await unknown(update, context)
+        return
+
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -515,6 +569,7 @@ if __name__ == '__main__':
     set_handler = CommandHandler('set', set)
     play_handler = CommandHandler('play', play)
     unplay_handler = CommandHandler('unplay', unplay)
+    delu_handler = CommandHandler('delu', delu)
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
     application.add_handler(start_handler)
     application.add_handler(pred_handler)
@@ -528,5 +583,6 @@ if __name__ == '__main__':
     application.add_handler(set_handler)
     application.add_handler(play_handler)
     application.add_handler(unplay_handler)
+    application.add_handler(delu_handler)
     application.add_handler(unknown_handler)
     application.run_polling()
