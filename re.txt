@@ -1,1 +1,3 @@
 python-telegram-bot==21.4
+bs4
+requests
