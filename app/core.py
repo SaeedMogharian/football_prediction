@@ -32,32 +32,68 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
     connection.commit()
 
 
-#
-# Auth
-#
-def auth(func):
+def _is_group_chat(chat) -> bool:
+    return chat is not None and chat.type in ("group", "supergroup")
+
+
+def super_admin(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
-        user_id = update.effective_message.from_user.id
-        service = context.application.bot_data["service"]
-        if not service.user_exists(user_id):
-            print("Unauthorized access denied.")
+        admin_ids = context.application.bot_data["admin_ids"]
+        user_id = update.effective_user.id
+        if user_id not in admin_ids:
+            print("Unauthorized: super admin required.")
             return
-        return await func(update, context)
+        return await func(update, context, *args, **kwargs)
 
     return wrapped
 
 
-def restricted(admins):
-    def decorator(func):
-        @wraps(func)
-        async def wrapped(update, context, *args, **kwargs):
-            user_id = update.effective_message.from_user.id
-            if user_id not in admins:
-                print("Unauthorized only admin access.")
-                return
-            return await func(update, context)
+def group_user(func):
+    @wraps(func)
+    async def wrapped(update, context, *args, **kwargs):
+        service = context.application.bot_data["service"]
+        admin_ids = context.application.bot_data["admin_ids"]
+        user_id = update.effective_user.id
+        chat = update.effective_chat
+        is_super_admin = user_id in admin_ids
 
-        return wrapped
+        if not is_super_admin and not _is_group_chat(chat):
+            print("Unauthorized: verified group chat required.")
+            return
+        if not is_super_admin and not service.is_group_verified(chat.id):
+            print("Unauthorized: group is not verified.")
+            return
+        if not service.user_exists(user_id):
+            print("Unauthorized: user is not registered.")
+            return
+        return await func(update, context, *args, **kwargs)
 
-    return decorator
+    return wrapped
+
+
+def group_admin(func):
+    @wraps(func)
+    async def wrapped(update, context, *args, **kwargs):
+        service = context.application.bot_data["service"]
+        admin_ids = context.application.bot_data["admin_ids"]
+        user_id = update.effective_user.id
+        chat = update.effective_chat
+
+        if not _is_group_chat(chat):
+            print("Unauthorized: group chat required.")
+            return
+        if not service.is_group_verified(chat.id):
+            print("Unauthorized: group is not verified.")
+            return
+        if user_id in admin_ids:
+            return await func(update, context, *args, **kwargs)
+
+        chat_admins = await context.bot.get_chat_administrators(chat.id)
+        if any(admin.user.id == user_id for admin in chat_admins):
+            return await func(update, context, *args, **kwargs)
+
+        print("Unauthorized: group admin or super admin required.")
+        return
+
+    return wrapped

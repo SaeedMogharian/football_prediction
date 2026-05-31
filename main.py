@@ -29,6 +29,7 @@ def main():
 
     application = ApplicationBuilder().token(bot_token).build()
     application.bot_data["service"] = service
+    application.bot_data["admin_ids"] = admin_ids
 
     application.add_handler(CommandHandler("start", handlers["start"]))
     application.add_handler(CommandHandler("predict", handlers["predict"]))
@@ -37,6 +38,10 @@ def main():
     application.add_handler(CommandHandler("my_stats", handlers["my_stats"]))
     application.add_handler(CommandHandler("results", handlers["results"]))
     application.add_handler(CommandHandler("remind", handlers["remind"]))
+    application.add_handler(CommandHandler("group_stats", handlers["group_stats"]))
+    application.add_handler(CommandHandler("request_group_verification", handlers["request_group_verification"]))
+    application.add_handler(CommandHandler("verify_group", handlers["verify_group"]))
+    application.add_handler(CommandHandler("pending_groups", handlers["pending_groups"]))
     application.add_handler(CommandHandler("recalc_scores", handlers["recalc_scores"]))
     application.add_handler(CommandHandler("set_result", handlers["set_result"]))
     application.add_handler(CommandHandler("close_predictions", handlers["close_predictions"]))
