@@ -3,12 +3,12 @@ import logging
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
 
 from app.core import load_settings, create_connection, init_db
-from app.services import init_state
+from app.services import Service
 from app.handlers import build_handlers
 
 
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 
@@ -23,26 +23,30 @@ def main():
     cursor = connection.cursor()
 
     init_db(cursor, connection, "schema.sql")
-    init_state(cursor)
+    service = Service(cursor, connection)
 
-    handlers = build_handlers(cursor, connection, admins, is_open)
+    handlers = build_handlers(service, admins, is_open)
 
     application = ApplicationBuilder().token(bot_token).build()
-    application.add_handler(CommandHandler('start', handlers["start"]))
-    application.add_handler(CommandHandler('pred', handlers["pred"]))
-    application.add_handler(CommandHandler('games', handlers["games"]))
-    application.add_handler(CommandHandler('rank', handlers["rank"]))
-    application.add_handler(CommandHandler('mine', handlers["mine"]))
-    application.add_handler(CommandHandler('res', handlers["res"]))
-    application.add_handler(CommandHandler('warn', handlers["warn"]))
-    application.add_handler(CommandHandler('calc', handlers["calc"]))
-    application.add_handler(CommandHandler('set', handlers["set"]))
-    application.add_handler(CommandHandler('play', handlers["play"]))
-    application.add_handler(CommandHandler('unplay', handlers["unplay"]))
-    application.add_handler(CommandHandler('delu', handlers["delu"]))
+    application.bot_data["service"] = service
+
+    application.add_handler(CommandHandler("start", handlers["start"]))
+    application.add_handler(CommandHandler("pred", handlers["pred"]))
+    application.add_handler(CommandHandler("games", handlers["games"]))
+    application.add_handler(CommandHandler("rank", handlers["rank"]))
+    application.add_handler(CommandHandler("mine", handlers["mine"]))
+    application.add_handler(CommandHandler("res", handlers["res"]))
+    application.add_handler(CommandHandler("warn", handlers["warn"]))
+    application.add_handler(CommandHandler("calc", handlers["calc"]))
+    application.add_handler(CommandHandler("set", handlers["set"]))
+    application.add_handler(CommandHandler("play", handlers["play"]))
+    application.add_handler(CommandHandler("unplay", handlers["unplay"]))
+    application.add_handler(CommandHandler("delu", handlers["delu"]))
+    application.add_handler(CommandHandler("addteams", handlers["addteams"]))
+    application.add_handler(CommandHandler("addgames", handlers["addgames"]))
     application.add_handler(MessageHandler(filters.COMMAND, handlers["unknown"]))
     application.run_polling()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -3,12 +3,6 @@ import sqlite3
 from pathlib import Path
 from functools import wraps
 
-#
-# States
-#
-Users = {}
-Games = {}
-Predictions = {}
 
 #
 # Config
@@ -17,6 +11,7 @@ def load_settings(path: str = "settings.json"):
     with Path(path).open("r") as file:
         return json.load(file)
 
+
 #
 # DB
 #
@@ -24,6 +19,7 @@ def create_connection(db_path: str = "db.sqlite3"):
     connection = None
     try:
         connection = sqlite3.connect(db_path)
+        connection.execute("PRAGMA foreign_keys = ON")
         print("Connection to SQLite DB successful")
     except sqlite3.Error as error:
         print(f"The error '{error}' occurred")
@@ -35,6 +31,7 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
         cursor.executescript(file.read())
     connection.commit()
 
+
 #
 # Auth
 #
@@ -42,7 +39,8 @@ def auth(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
-        if user_id not in Users:
+        service = context.application.bot_data["service"]
+        if not service.user_exists(user_id):
             print("Unauthorized access denied.")
             return
         return await func(update, context)
