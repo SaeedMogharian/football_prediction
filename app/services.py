@@ -18,7 +18,7 @@ class Service:
         self._teams_cache: set[str] | None = None
         self._games_cache: dict[int, Game] | None = None
         self._users_cache: dict[int, tuple[str, int]] | None = None
-        self._pred_cache: dict[tuple[int, int], tuple[int, int, int]] | None = None
+        self._predictions_cache: dict[tuple[int, int], tuple[int, int, int]] | None = None
 
     def _load_teams_cache(self):
         if self._teams_cache is None:
@@ -47,10 +47,10 @@ class Service:
             rows = self.cursor.execute("SELECT t_id, username, score FROM Users").fetchall()
             self._users_cache = {row[0]: (row[1], row[2]) for row in rows}
 
-    def _load_pred_cache(self):
-        if self._pred_cache is None:
+    def _load_predictions_cache(self):
+        if self._predictions_cache is None:
             rows = self.cursor.execute("SELECT user, game, pred_a, pred_b, score FROM Predictions").fetchall()
-            self._pred_cache = {(row[0], row[1]): (row[2], row[3], row[4]) for row in rows}
+            self._predictions_cache = {(row[0], row[1]): (row[2], row[3], row[4]) for row in rows}
 
     #
     # User helpers
@@ -79,15 +79,15 @@ class Service:
         self._load_users_cache()
         return [(uid, data[0], data[1]) for uid, data in self._users_cache.items()]
 
-    def del_user(self, user_id: int):
+    def delete_user(self, user_id: int):
         self.cursor.execute("DELETE FROM Predictions WHERE user = ?", (user_id,))
         self.cursor.execute("DELETE FROM Users WHERE t_id = ?", (user_id,))
         self.connection.commit()
 
         self._load_users_cache()
         self._users_cache.pop(user_id, None)
-        self._load_pred_cache()
-        self._pred_cache = {k: v for k, v in self._pred_cache.items() if k[0] != user_id}
+        self._load_predictions_cache()
+        self._predictions_cache = {k: v for k, v in self._predictions_cache.items() if k[0] != user_id}
 
     def update_scores(self, scores: dict[int, int]):
         for user_id, score in scores.items():
@@ -162,7 +162,7 @@ class Service:
         g.is_played = is_played
 
         if is_played:
-            self.score_calc(game_id)
+            self.recalculate_game_scores(game_id)
 
     def fetch_result(self, game_id: int):
         from bs4 import BeautifulSoup
@@ -184,47 +184,47 @@ class Service:
     #
     # Prediction helpers
     #
-    def pred_is_new(self, user_id: int, game_id: int):
-        self._load_pred_cache()
-        return (user_id, game_id) not in self._pred_cache
+    def is_new_prediction(self, user_id: int, game_id: int):
+        self._load_predictions_cache()
+        return (user_id, game_id) not in self._predictions_cache
 
-    def pred_is_av(self, game_id: int):
+    def is_prediction_open(self, game_id: int):
         return not self.game(game_id).is_played
 
-    def pred_is_possib(self, pred):
-        return self.game_exists(pred[1]) and pred[2] >= 0 and pred[3] >= 0
+    def is_valid_prediction_input(self, prediction_input):
+        return self.game_exists(prediction_input[1]) and prediction_input[2] >= 0 and prediction_input[3] >= 0
 
-    def add_pred(self, pred):
+    def add_prediction(self, prediction):
         self.cursor.execute(
             "INSERT INTO Predictions (user, game, pred_a, pred_b, score) VALUES (?, ?, ?, ?, ?)",
-            (pred[0], pred[1], pred[2], pred[3], pred[4]),
+            (prediction[0], prediction[1], prediction[2], prediction[3], prediction[4]),
         )
         self.connection.commit()
-        self._load_pred_cache()
-        self._pred_cache[(pred[0], pred[1])] = (pred[2], pred[3], pred[4])
+        self._load_predictions_cache()
+        self._predictions_cache[(prediction[0], prediction[1])] = (prediction[2], prediction[3], prediction[4])
 
-    def edit_pred(self, pred):
+    def update_prediction(self, prediction):
         self.cursor.execute(
             "UPDATE Predictions SET pred_a = ?, pred_b = ?, score = ? WHERE user = ? AND game = ?",
-            (pred[2], pred[3], pred[4], pred[0], pred[1]),
+            (prediction[2], prediction[3], prediction[4], prediction[0], prediction[1]),
         )
         self.connection.commit()
-        self._load_pred_cache()
-        self._pred_cache[(pred[0], pred[1])] = (pred[2], pred[3], pred[4])
+        self._load_predictions_cache()
+        self._predictions_cache[(prediction[0], prediction[1])] = (prediction[2], prediction[3], prediction[4])
 
     def get_prediction(self, user_id: int, game_id: int):
-        self._load_pred_cache()
-        return self._pred_cache.get((user_id, game_id))
+        self._load_predictions_cache()
+        return self._predictions_cache.get((user_id, game_id))
 
     def get_user_predictions(self, user_id: int):
-        self._load_pred_cache()
-        return {k[1]: v for k, v in self._pred_cache.items() if k[0] == user_id}
+        self._load_predictions_cache()
+        return {k[1]: v for k, v in self._predictions_cache.items() if k[0] == user_id}
 
     def get_predictions_for_game(self, game_id: int):
-        self._load_pred_cache()
+        self._load_predictions_cache()
         self._load_users_cache()
         rows = []
-        for (user_id, g_id), pred in self._pred_cache.items():
+        for (user_id, g_id), pred in self._predictions_cache.items():
             if g_id == game_id and user_id in self._users_cache:
                 rows.append((user_id, self._users_cache[user_id][0], pred[0], pred[1], pred[2]))
         return rows
@@ -232,7 +232,7 @@ class Service:
     #
     # Scoring helpers
     #
-    def point_calc(self, game_id: int, pred_a: int, pred_b: int):
+    def calculate_points(self, game_id: int, pred_a: int, pred_b: int):
         game = self.game(game_id)
         if game.is_played == 0:
             return 0
@@ -251,16 +251,16 @@ class Service:
             point += 1
         return point
 
-    def score_calc(self, game_id: int):
-        self._load_pred_cache()
+    def recalculate_game_scores(self, game_id: int):
+        self._load_predictions_cache()
         updates = []
-        for (user_id, g_id), (pred_a, pred_b, old_score) in list(self._pred_cache.items()):
+        for (user_id, g_id), (pred_a, pred_b, old_score) in list(self._predictions_cache.items()):
             if g_id != game_id:
                 continue
-            point = self.point_calc(game_id, pred_a, pred_b)
+            point = self.calculate_points(game_id, pred_a, pred_b)
             if old_score != point:
                 updates.append((point, user_id, game_id))
-                self._pred_cache[(user_id, g_id)] = (pred_a, pred_b, point)
+                self._predictions_cache[(user_id, g_id)] = (pred_a, pred_b, point)
 
         for point, user_id, g_id in updates:
             self.cursor.execute(
@@ -271,10 +271,10 @@ class Service:
 
     def calculate_user_scores(self):
         scores = {user_id: 0 for user_id, _, _ in self.get_all_users()}
-        self._load_pred_cache()
+        self._load_predictions_cache()
         self._load_games_cache()
 
-        for (user_id, game_id), (_, _, score) in self._pred_cache.items():
+        for (user_id, game_id), (_, _, score) in self._predictions_cache.items():
             game = self._games_cache.get(game_id)
             if game and game.is_played:
                 scores[user_id] += score

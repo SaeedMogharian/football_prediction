@@ -8,180 +8,191 @@ from app.core import auth
 # Public entry handlers
 #
 def build_user_handlers(service, is_open):
-    async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_message.from_user
-        text = "سلام {}".format(user.first_name)
+    async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        telegram_user = update.effective_message.from_user
+        response_text = "سلام {}".format(telegram_user.first_name)
 
         try:
-            if not user.username:
+            if not telegram_user.username:
                 raise NameError
 
-            if not service.user_exists(user.id):
+            if not service.user_exists(telegram_user.id):
                 if is_open:
-                    service.add_user(user)
+                    service.add_user(telegram_user)
                 else:
-                    text += "\n\n شرمنده عضویت نداریم!"
+                    response_text += "\n\n شرمنده عضویت نداریم!"
 
-            if service.user_exists(user.id):
-                text += "\nبه بات پیش‌بینی خوش اومدی!"
-                text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-                text += "\n/pred <gameID> <team_a goals> <team_b goals>"
+            if service.user_exists(telegram_user.id):
+                response_text += "\nبه بات پیش‌بینی خوش اومدی!"
+                response_text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
+                response_text += "\n/predict <game_id> <team_a_goals> <team_b_goals>"
 
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
         except Exception:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="بدون داشتن یوزرنیم نمی‌توانید از بات استفاده کنید")
 
     @auth
-    async def games(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "بازی‌ها:\n"
+    async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        response_text = "بازی‌ها:\n"
         game_ids = service.list_game_ids()
         if not game_ids:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
             return
 
         try:
-            n = int(context.args[0])
+            visible_count = int(context.args[0])
         except Exception:
-            n = 12
+            visible_count = 12
 
-        c = service.current_game()
-        a = max(c - n // 4, 1)
-        a = min(max(len(game_ids) - n + 1, 1), a)
-        end = min(a + n, len(game_ids) + 1)
+        current_game_id = service.current_game()
+        start_game_id = max(current_game_id - visible_count // 4, 1)
+        start_game_id = min(max(len(game_ids) - visible_count + 1, 1), start_game_id)
+        end_game_id = min(start_game_id + visible_count, len(game_ids) + 1)
 
-        for game_id in range(a, end):
+        for game_id in range(start_game_id, end_game_id):
             if not service.game_exists(game_id):
                 continue
-            g = service.game(game_id)
-            goals_a = g.goals_a if g.is_played else "TBD"
-            goals_b = g.goals_b if g.is_played else "TBD"
-            text += f"{game_id}: {g.team_a} {goals_a} - {goals_b} {g.team_b}\n"
+            game = service.game(game_id)
+            goals_a = game.goals_a if game.is_played else "TBD"
+            goals_b = game.goals_b if game.is_played else "TBD"
+            response_text += f"{game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}\n"
 
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
     @auth
-    async def pred(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.effective_message.from_user
-        text = "@{}".format(user.username)
+    async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        telegram_user = update.effective_message.from_user
+        response_text = "@{}".format(telegram_user.username)
         try:
-            p = (user.id, int(context.args[0]), int(context.args[1]), int(context.args[2]), 0)
-            av = service.pred_is_av(p[1])
-            new = service.pred_is_new(p[0], p[1])
+            prediction_input = (
+                telegram_user.id,
+                int(context.args[0]),
+                int(context.args[1]),
+                int(context.args[2]),
+                0,
+            )
+            is_open_for_prediction = service.is_prediction_open(prediction_input[1])
+            is_new_prediction = service.is_new_prediction(prediction_input[0], prediction_input[1])
 
-            if service.pred_is_possib(p):
-                g = service.game(p[1])
-                if av and new:
-                    text += "\n پیش بینی شما اضافه شد:"
-                    text += f"\n{p[1]}: {g.team_a} {p[2]} - {p[3]} {g.team_b}"
-                    service.add_pred(p)
-                elif not av:
-                    text += "\n این بازی برای پیش‌بینی در دسترس نیست"
-                elif not new:
-                    text += "\nشما قبلا این بازی را پیش بینی کرده‌اید\n لطفا دقت کنید :)\n"
-                    current = service.get_prediction(p[0], p[1])
-                    if current and current != p[2:]:
-                        service.edit_pred(p)
-                        text += "\n پیش بینی شما تغییر کرد:"
-                        text += f"\n{p[1]}: {g.team_a} {p[2]} - {p[3]} {g.team_b}"
-                await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            if service.is_valid_prediction_input(prediction_input):
+                game = service.game(prediction_input[1])
+                if is_open_for_prediction and is_new_prediction:
+                    response_text += "\n پیش بینی شما اضافه شد:"
+                    response_text += f"\n{prediction_input[1]}: {game.team_a} {prediction_input[2]} - {prediction_input[3]} {game.team_b}"
+                    service.add_prediction(prediction_input)
+                elif not is_open_for_prediction:
+                    response_text += "\n این بازی برای پیش‌بینی در دسترس نیست"
+                elif not is_new_prediction:
+                    response_text += "\nشما قبلا این بازی را پیش بینی کرده‌اید\n لطفا دقت کنید :)\n"
+                    existing_prediction = service.get_prediction(prediction_input[0], prediction_input[1])
+                    if existing_prediction and existing_prediction != prediction_input[2:]:
+                        service.update_prediction(prediction_input)
+                        response_text += "\n پیش بینی شما تغییر کرد:"
+                        response_text += f"\n{prediction_input[1]}: {game.team_a} {prediction_input[2]} - {prediction_input[3]} {game.team_b}"
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
             else:
                 raise ValueError
         except Exception:
-            text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
-            text += "\n/pred <gameID> <team_a goals> <team_b goals>"
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            response_text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
+            response_text += "\n/predict <game_id> <team_a_goals> <team_b_goals>"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
     @auth
-    async def rank(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        text = "رده‌بندی:\n"
-        players = sorted(service.get_all_users(), reverse=True, key=lambda k: k[2])
-        if not players:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+    async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        response_text = "رده‌بندی:\n"
+        ranked_players = sorted(service.get_all_users(), reverse=True, key=lambda user_row: user_row[2])
+        if not ranked_players:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
             return
 
-        c = players[0][2]
-        i = 1
-        j = 0
-        for x in players:
-            if x[2] < c:
-                i += players.index(x) - j
-                j = players.index(x)
-                c = x[2]
-            text += "{} - {} : {}\n".format(i, x[1], x[2])
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        current_score = ranked_players[0][2]
+        rank_position = 1
+        tied_offset = 0
+        for player in ranked_players:
+            if player[2] < current_score:
+                rank_position += ranked_players.index(player) - tied_offset
+                tied_offset = ranked_players.index(player)
+                current_score = player[2]
+            response_text += "{} - {} : {}\n".format(rank_position, player[1], player[2])
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
     @auth
-    async def mine(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def my_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            n = int(context.args[0])
+            recent_limit = int(context.args[0])
         except Exception:
-            n = 10
+            recent_limit = 10
 
-        user = update.effective_message.from_user
-        text = "@{}\nآمار شما:".format(user.username)
+        telegram_user = update.effective_message.from_user
+        response_text = "@{}\nآمار شما:".format(telegram_user.username)
 
-        mp = service.get_user_predictions(user.id)
-        s = [x[2] for x in mp.values()]
+        user_predictions = service.get_user_predictions(telegram_user.id)
+        prediction_scores = [prediction[2] for prediction in user_predictions.values()]
 
-        c = service.current_game()
-        d = min(len(mp), c) * 100 // c if c else 0
-        me = service.get_user(user.id)
+        played_games_count = service.current_game()
+        prediction_coverage = min(len(user_predictions), played_games_count) * 100 // played_games_count if played_games_count else 0
+        current_user = service.get_user(telegram_user.id)
 
-        text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(len(mp), c)
-        text += "\n امتیاز ثبت شده: {}".format(me[2] if me else 0)
-        text += "\n پیش بینی {}٪ بازی‌ها تا کنون".format(d)
-        text += "\n {} پیش‌بینی دقیق ".format(s.count(10))
-        avg_den = min(c, len(s)) if s and c else 1
-        text += "\n میانگین {} امتیاز از هر پیش‌بینی. ".format(round(sum(s) / avg_den, 2) if s else 0)
+        response_text += "\n {} پیش‌بینی ({} بازی برگزار شده) ".format(len(user_predictions), played_games_count)
+        response_text += "\n امتیاز ثبت شده: {}".format(current_user[2] if current_user else 0)
+        response_text += "\n پیش بینی {}٪ بازی‌ها تا کنون".format(prediction_coverage)
+        response_text += "\n {} پیش‌بینی دقیق ".format(prediction_scores.count(10))
+        average_denominator = min(played_games_count, len(prediction_scores)) if prediction_scores and played_games_count else 1
+        response_text += "\n میانگین {} امتیاز از هر پیش‌بینی. ".format(
+            round(sum(prediction_scores) / average_denominator, 2) if prediction_scores else 0
+        )
 
-        text += "\n\nآخرین پیش‌بینی‌ها "
-        if mp:
-            g = max(mp.keys())
+        response_text += "\n\nآخرین پیش‌بینی‌ها "
+        if user_predictions:
+            game_id = max(user_predictions.keys())
             shown = 0
-            while g >= 1 and shown < n:
-                if g in mp and service.game_exists(g):
-                    game = service.game(g)
-                    sc = mp[g][2] if game.is_played else "np"
-                    text += f"\n{g}: {game.team_a} {mp[g][0]} - {mp[g][1]} {game.team_b}: {sc}"
+            while game_id >= 1 and shown < recent_limit:
+                if game_id in user_predictions and service.game_exists(game_id):
+                    game = service.game(game_id)
+                    score_text = user_predictions[game_id][2] if game.is_played else "np"
+                    response_text += (
+                        f"\n{game_id}: {game.team_a} {user_predictions[game_id][0]} - "
+                        f"{user_predictions[game_id][1]} {game.team_b}: {score_text}"
+                    )
                     shown += 1
-                g -= 1
+                game_id -= 1
 
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
     @auth
-    async def res(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        def for_game(text, game_id):
+    async def game_results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        def format_results_for_game(text, game_id):
             game = service.game(game_id)
             text += f"\n\nبرای بازی {game_id}: {game.team_a} {game.goals_a} - {game.goals_b} {game.team_b}"
             rows = service.get_predictions_for_game(game_id)
-            data = sorted([[r[4], r[1], r[2], r[3]] for r in rows], reverse=True)
-            for x in data:
-                text += "\n{}: {} - {}: {}".format(x[1], x[2], x[3], x[0])
+            sorted_rows = sorted([[row[4], row[1], row[2], row[3]] for row in rows], reverse=True)
+            for row in sorted_rows:
+                text += "\n{}: {} - {}: {}".format(row[1], row[2], row[3], row[0])
             return text
 
         try:
-            a = int(context.args[0])
-            g = a if service.game_exists(a) else service.current_game()
+            requested_game_id = int(context.args[0])
+            game_id = requested_game_id if service.game_exists(requested_game_id) else service.current_game()
         except Exception:
-            g = service.current_game()
+            game_id = service.current_game()
 
-        if service.game_exists(g) and service.game(g).is_played:
-            t = ":تمام پیش‌‌بینی‌ها"
+        if service.game_exists(game_id) and service.game(game_id).is_played:
+            response_text = ":تمام پیش‌‌بینی‌ها"
             try:
-                service.fetch_result(g)
+                service.fetch_result(game_id)
             except Exception:
                 print("Google Didn't Respond!")
-            t = for_game(t, g)
+            response_text = format_results_for_game(response_text, game_id)
         else:
-            t = "بازی شماره {} هنوز برگزار نشده است!".format(g)
+            response_text = "بازی شماره {} هنوز برگزار نشده است!".format(game_id)
 
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=t)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
     return {
-        "start": start,
-        "pred": pred,
-        "games": games,
-        "rank": rank,
-        "mine": mine,
-        "res": res,
+        "start": start_command,
+        "predict": predict_command,
+        "games": games_command,
+        "rank": rank_command,
+        "my_stats": my_stats_command,
+        "results": game_results_command,
     }

@@ -16,8 +16,8 @@ logging.basicConfig(
 def main():
     settings = load_settings()
     bot_token = settings["token"]
-    admins = set(map(int, settings["admins"]))
-    is_open = settings["is_open"]
+    admin_ids = set(map(int, settings["admins"]))
+    is_open_signup = settings["is_open"]
 
     connection = create_connection("db.sqlite3")
     cursor = connection.cursor()
@@ -25,25 +25,25 @@ def main():
     init_db(cursor, connection, "schema.sql")
     service = Service(cursor, connection)
 
-    handlers = build_handlers(service, admins, is_open)
+    handlers = build_handlers(service, admin_ids, is_open_signup)
 
     application = ApplicationBuilder().token(bot_token).build()
     application.bot_data["service"] = service
 
     application.add_handler(CommandHandler("start", handlers["start"]))
-    application.add_handler(CommandHandler("pred", handlers["pred"]))
+    application.add_handler(CommandHandler("predict", handlers["predict"]))
     application.add_handler(CommandHandler("games", handlers["games"]))
     application.add_handler(CommandHandler("rank", handlers["rank"]))
-    application.add_handler(CommandHandler("mine", handlers["mine"]))
-    application.add_handler(CommandHandler("res", handlers["res"]))
-    application.add_handler(CommandHandler("warn", handlers["warn"]))
-    application.add_handler(CommandHandler("calc", handlers["calc"]))
-    application.add_handler(CommandHandler("set", handlers["set"]))
-    application.add_handler(CommandHandler("play", handlers["play"]))
-    application.add_handler(CommandHandler("unplay", handlers["unplay"]))
-    application.add_handler(CommandHandler("delu", handlers["delu"]))
-    application.add_handler(CommandHandler("addteams", handlers["addteams"]))
-    application.add_handler(CommandHandler("addgames", handlers["addgames"]))
+    application.add_handler(CommandHandler("my_stats", handlers["my_stats"]))
+    application.add_handler(CommandHandler("results", handlers["results"]))
+    application.add_handler(CommandHandler("remind", handlers["remind"]))
+    application.add_handler(CommandHandler("recalc_scores", handlers["recalc_scores"]))
+    application.add_handler(CommandHandler("set_result", handlers["set_result"]))
+    application.add_handler(CommandHandler("close_predictions", handlers["close_predictions"]))
+    application.add_handler(CommandHandler("open_predictions", handlers["open_predictions"]))
+    application.add_handler(CommandHandler("delete_user", handlers["delete_user"]))
+    application.add_handler(CommandHandler("add_teams", handlers["add_teams"]))
+    application.add_handler(CommandHandler("add_games", handlers["add_games"]))
     application.add_handler(MessageHandler(filters.COMMAND, handlers["unknown"]))
     application.run_polling()
 

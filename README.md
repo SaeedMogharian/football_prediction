@@ -38,33 +38,33 @@ Telegram bot for match prediction in a friend group.
 ### User
 - `/start`
 - `/games`
-- `/pred <gameID> <team_a goals> <team_b goals>`
+- `/predict <game_id> <team_a_goals> <team_b_goals>`
 - `/rank`
-- `/mine`
-- `/res [gameID]`
+- `/my_stats`
+- `/results [game_id]`
 
 ### Admin
-- `/set <gameID> <goals_a> <goals_b>`
-- `/play <gameID>`
-- `/unplay <gameID>`
-- `/warn [gameID]`
-- `/calc`
-- `/delu <username> [f|1]`
+- `/set_result <game_id> <goals_a> <goals_b>`
+- `/close_predictions <game_id>`
+- `/open_predictions <game_id>`
+- `/remind [game_id]`
+- `/recalc_scores`
+- `/delete_user <username> [f|1]`
 
 ### Admin Bulk Insert
-- `/addteams` with newline-separated names:
+- `/add_teams` with newline-separated names:
   ```text
-  /addteams
+  /add_teams
   Argentina
   Brazil
   Germany
   ```
 
-- `/addgames` with newline-separated rows (comma-separated):
+- `/add_games` with newline-separated rows (comma-separated):
   - minimal: `team_a, team_b`
   - full: `team_a, team_b, goals_a, goals_b, isPlayed`
   ```text
-  /addgames
+  /add_games
   Argentina, Brazil
   France, Germany, 0, 0, 0
   ```
