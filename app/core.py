@@ -19,6 +19,7 @@ def create_connection(db_path: str = "db.sqlite3"):
     connection = None
     try:
         connection = sqlite3.connect(db_path)
+        connection.execute("PRAGMA foreign_keys = ON")
         print("Connection to SQLite DB successful")
     except sqlite3.Error as error:
         print(f"The error '{error}' occurred")
