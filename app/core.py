@@ -11,6 +11,7 @@ def load_settings(path: str = "settings.json"):
     with Path(path).open("r") as file:
         return json.load(file)
 
+
 #
 # DB
 #
@@ -28,6 +29,7 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
     with open(schema_path, "r") as file:
         cursor.executescript(file.read())
     connection.commit()
+
 
 #
 # Auth

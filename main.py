@@ -2,7 +2,6 @@ import logging
 
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
 
-from app.catalog import load_catalog
 from app.core import load_settings, create_connection, init_db
 from app.services import Service
 from app.handlers import build_handlers
@@ -20,13 +19,11 @@ def main():
     admins = set(map(int, settings["admins"]))
     is_open = settings["is_open"]
 
-    catalog = load_catalog("data/catalog.jsonc")
-
     connection = create_connection("db.sqlite3")
     cursor = connection.cursor()
 
     init_db(cursor, connection, "schema.sql")
-    service = Service(cursor, connection, catalog)
+    service = Service(cursor, connection)
 
     handlers = build_handlers(service, admins, is_open)
 
@@ -45,6 +42,8 @@ def main():
     application.add_handler(CommandHandler("play", handlers["play"]))
     application.add_handler(CommandHandler("unplay", handlers["unplay"]))
     application.add_handler(CommandHandler("delu", handlers["delu"]))
+    application.add_handler(CommandHandler("addteams", handlers["addteams"]))
+    application.add_handler(CommandHandler("addgames", handlers["addgames"]))
     application.add_handler(MessageHandler(filters.COMMAND, handlers["unknown"]))
     application.run_polling()
 

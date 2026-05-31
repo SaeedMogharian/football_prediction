@@ -8,6 +8,64 @@ from app.core import restricted
 # Admin moderation handlers
 #
 def build_admin_handlers(service, admins, unknown):
+    def _command_payload(update: Update) -> str:
+        text = update.effective_message.text or ""
+        parts = text.split("\n", 1)
+        if len(parts) == 1:
+            cmd_parts = text.split(maxsplit=1)
+            return cmd_parts[1] if len(cmd_parts) > 1 else ""
+        return parts[1]
+
+    @restricted(admins)
+    async def add_teams(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            payload = _command_payload(update)
+            teams = [line.strip() for line in payload.splitlines() if line.strip()]
+            if not teams:
+                raise ValueError
+            service.add_teams(teams)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"{len(teams)} تیم اضافه/به‌روزرسانی شد.",
+            )
+        except Exception:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="فرمت درست:\n/addteams\nTeam A\nTeam B\nTeam C",
+            )
+
+    @restricted(admins)
+    async def add_games(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            payload = _command_payload(update)
+            lines = [line.strip() for line in payload.splitlines() if line.strip()]
+            if not lines:
+                raise ValueError
+
+            games = []
+            for line in lines:
+                parts = [x.strip() for x in line.split(",")]
+                if len(parts) not in (2, 5):
+                    raise ValueError
+                if len(parts) == 2:
+                    team_a, team_b = parts
+                    goals_a, goals_b, is_played = 0, 0, 0
+                else:
+                    team_a, team_b = parts[0], parts[1]
+                    goals_a, goals_b, is_played = int(parts[2]), int(parts[3]), int(parts[4])
+                games.append((team_a, team_b, goals_a, goals_b, is_played))
+
+            service.add_games(games)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"{len(games)} بازی اضافه شد.",
+            )
+        except Exception as error:
+            msg = "فرمت درست:\n/addgames\nTeam A, Team B\nTeam C, Team D"
+            if str(error):
+                msg += f"\n\nخطا: {error}"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
+
     @restricted(admins)
     async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -59,7 +117,8 @@ def build_admin_handlers(service, admins, unknown):
                 text = "بازی {} فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             else:
-                service.set_game(n, 0, 0, 1)
+                g = service.game(n)
+                service.set_game(n, g.goals_a, g.goals_b, 1)
                 g = service.game(n)
                 text = "بازی: "
                 text += f"\n{n}: {g.team_a} -  {g.team_b}"
@@ -76,7 +135,8 @@ def build_admin_handlers(service, admins, unknown):
                 text = "بازی {} غیر فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             else:
-                service.set_game(n, 0, 0, 0)
+                g = service.game(n)
+                service.set_game(n, g.goals_a, g.goals_b, 0)
                 g = service.game(n)
                 text = "بازی: "
                 text += f"\n{n}: {g.team_a} - {g.team_b}"
@@ -115,4 +175,6 @@ def build_admin_handlers(service, admins, unknown):
         "play": play,
         "unplay": unplay,
         "delu": delu,
+        "addteams": add_teams,
+        "addgames": add_games,
     }

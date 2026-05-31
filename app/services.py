@@ -1,11 +1,20 @@
-from app.catalog import Catalog, Game
+from dataclasses import dataclass
+
+
+@dataclass
+class Game:
+    id: int
+    team_a: str
+    team_b: str
+    goals_a: int
+    goals_b: int
+    is_played: int
 
 
 class Service:
-    def __init__(self, cursor, connection, catalog: Catalog):
+    def __init__(self, cursor, connection):
         self.cursor = cursor
         self.connection = connection
-        self.catalog = catalog
 
     #
     # User helpers
@@ -40,34 +49,67 @@ class Service:
         self.connection.commit()
 
     #
+    # Team helpers
+    #
+    def add_teams(self, teams: list[str]):
+        for team in teams:
+            self.cursor.execute("INSERT OR IGNORE INTO Teams (name) VALUES (?)", (team,))
+        self.connection.commit()
+
+    def team_exists(self, team_name: str) -> bool:
+        row = self.cursor.execute("SELECT 1 FROM Teams WHERE name = ?", (team_name,)).fetchone()
+        return row is not None
+
+    #
     # Game helpers
     #
     def game_exists(self, game_id: int) -> bool:
-        return game_id in self.catalog.games
+        row = self.cursor.execute("SELECT 1 FROM Games WHERE id = ?", (game_id,)).fetchone()
+        return row is not None
 
     def game(self, game_id: int) -> Game:
-        return self.catalog.games[game_id]
+        row = self.cursor.execute(
+            "SELECT id, team_a, team_b, goals_a, goals_b, isPlayed FROM Games WHERE id = ?",
+            (game_id,),
+        ).fetchone()
+        return Game(
+            id=row[0],
+            team_a=row[1],
+            team_b=row[2],
+            goals_a=row[3],
+            goals_b=row[4],
+            is_played=row[5],
+        )
 
     def list_game_ids(self):
-        return sorted(self.catalog.games.keys())
+        rows = self.cursor.execute("SELECT id FROM Games ORDER BY id").fetchall()
+        return [row[0] for row in rows]
 
     def current_game(self):
-        played = [g.id for g in self.catalog.games.values() if g.is_played]
-        return max(played) if played else 1
+        row = self.cursor.execute("SELECT MAX(id) FROM Games WHERE isPlayed = 1").fetchone()
+        return int(row[0]) if row and row[0] is not None else 1
+
+    def add_games(self, games: list[tuple[str, str, int, int, int]]):
+        for team_a, team_b, goals_a, goals_b, is_played in games:
+            if not self.team_exists(team_a) or not self.team_exists(team_b):
+                raise ValueError(f"Unknown team in game: {team_a} vs {team_b}")
+            self.cursor.execute(
+                """
+                INSERT INTO Games (team_a, team_b, goals_a, goals_b, isPlayed)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (team_a, team_b, goals_a, goals_b, is_played),
+            )
+        self.connection.commit()
 
     def set_game(self, game_id: int, goals_a: int, goals_b: int, is_played: int = 1):
-        game = self.catalog.games[game_id]
-        changed = (
-            game.goals_a != goals_a
-            or game.goals_b != goals_b
-            or game.is_played != is_played
-        )
-        if not changed:
+        if not self.game_exists(game_id):
             return
-
-        game.goals_a = goals_a
-        game.goals_b = goals_b
-        game.is_played = is_played
+        self.cursor.execute(
+            "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ? WHERE id = ?",
+            (goals_a, goals_b, is_played, game_id),
+        )
+        self.connection.commit()
 
         if is_played:
             self.score_calc(game_id)
@@ -76,7 +118,7 @@ class Service:
         from bs4 import BeautifulSoup
         import requests
 
-        game = self.catalog.games[game_id]
+        game = self.game(game_id)
         query = f"https://www.google.com/search?q={game.team_a}+vs+{game.team_b}"
         source = requests.get(query, headers={"accept-language": "en-US,en;q=0.9"}).text
         soup = BeautifulSoup(source, "lxml")
@@ -99,10 +141,10 @@ class Service:
         return row is None
 
     def pred_is_av(self, game_id: int):
-        return not self.catalog.games[game_id].is_played
+        return not self.game(game_id).is_played
 
     def pred_is_possib(self, pred):
-        return pred[1] in self.catalog.games and pred[2] >= 0 and pred[3] >= 0
+        return self.game_exists(pred[1]) and pred[2] >= 0 and pred[3] >= 0
 
     def add_pred(self, pred):
         self.cursor.execute(
@@ -119,11 +161,10 @@ class Service:
         self.connection.commit()
 
     def get_prediction(self, user_id: int, game_id: int):
-        row = self.cursor.execute(
+        return self.cursor.execute(
             "SELECT pred_a, pred_b, score FROM Predictions WHERE user = ? AND game = ?",
             (user_id, game_id),
         ).fetchone()
-        return row
 
     def get_user_predictions(self, user_id: int):
         rows = self.cursor.execute(
@@ -147,24 +188,21 @@ class Service:
     # Scoring helpers
     #
     def point_calc(self, game_id: int, pred_a: int, pred_b: int):
-        game = self.catalog.games[game_id]
+        game = self.game(game_id)
         if game.is_played == 0:
             return 0
 
-        goals_a = game.goals_a
-        goals_b = game.goals_b
-
-        if int(pred_a) == int(goals_a) and int(pred_b) == int(goals_b):
+        if int(pred_a) == int(game.goals_a) and int(pred_b) == int(game.goals_b):
             return 10
-        if int(pred_a) - int(pred_b) == int(goals_a) - int(goals_b):
+        if int(pred_a) - int(pred_b) == int(game.goals_a) - int(game.goals_b):
             return 7
 
         point = 0
-        if (int(pred_a) > int(pred_b) and int(goals_a) > int(goals_b)) or (
-            int(pred_a) < int(pred_b) and int(goals_a) < int(goals_b)
+        if (int(pred_a) > int(pred_b) and int(game.goals_a) > int(game.goals_b)) or (
+            int(pred_a) < int(pred_b) and int(game.goals_a) < int(game.goals_b)
         ):
             point += 4
-        if int(pred_a) == int(goals_a) or int(pred_b) == int(goals_b):
+        if int(pred_a) == int(game.goals_a) or int(pred_b) == int(game.goals_b):
             point += 1
         return point
 
@@ -183,9 +221,10 @@ class Service:
 
     def calculate_user_scores(self):
         scores = {user_id: 0 for user_id, _, _ in self.get_all_users()}
-        rows = self.cursor.execute("SELECT user, game, score FROM Predictions").fetchall()
-        for user_id, game_id, score in rows:
-            if self.catalog.games.get(game_id) and self.catalog.games[game_id].is_played:
-                scores[user_id] += score
+        rows = self.cursor.execute(
+            "SELECT p.user, p.game, p.score FROM Predictions p JOIN Games g ON g.id = p.game WHERE g.isPlayed = 1"
+        ).fetchall()
+        for user_id, _game_id, score in rows:
+            scores[user_id] += score
         self.update_scores(scores)
         return scores
