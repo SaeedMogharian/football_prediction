@@ -12,6 +12,23 @@ A simple project that creates a telegram bot for a friend group; letting them to
     "admins":   ["Admin1NumeralTelgeramID", "Admin2NumeralTelgeramID", ...]      
 }  
 ```
+
+## Run the bot
+1. Install dependencies:
+   ```bash
+   pip install -r re.txt
+   ```
+2. Create your config file from the example:
+   ```bash
+   cp settings.json.example settings.json
+   ```
+3. Edit `settings.json` and set your real bot token and admin Telegram IDs.
+4. Start the bot:
+   ```bash
+   python main.py
+   ```
+5. Open Telegram and send `/start` to your bot.
+
 ### db.sqlite3
 
 ```sql

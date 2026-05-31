@@ -1,0 +1,7 @@
+{
+  "is_open": true,
+  "token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "admins": [
+    "123456789"
+  ]
+}

@@ -30,6 +30,13 @@ def create_connection():
 Conn = create_connection()
 cursor = Conn.cursor()
 
+
+def init_db():
+    with open("schema.sql", "r") as f:
+        cursor.executescript(f.read())
+    Conn.commit()
+
+
 # {id: (username, points)}
 Users = {}
 
@@ -578,6 +585,7 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == '__main__':
+    init_db()
     init()
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     start_handler = CommandHandler('start', start)
