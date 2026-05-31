@@ -1,4 +1,13 @@
 {
+  // Teams list used by all games.
+  "teams": [
+    "Argentina",
+    "Brazil",
+    "France",
+    "Germany"
+  ],
+
+  // Games catalog: id should stay unique and stable.
   "games": [
     {
       "id": 1,

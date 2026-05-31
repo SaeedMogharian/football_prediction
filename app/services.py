@@ -1,149 +1,191 @@
-from bs4 import BeautifulSoup
-import requests
-
-from app.core import Users, Games, Predictions
+from app.catalog import Catalog, Game
 
 
-#
-# State initialization
-#
-def init_state(cursor):
-    rows = cursor.execute("SELECT * FROM Predictions").fetchall()
-    for prediction in rows:
-        Predictions[(prediction[0], prediction[1])] = prediction[2:]
+class Service:
+    def __init__(self, cursor, connection, catalog: Catalog):
+        self.cursor = cursor
+        self.connection = connection
+        self.catalog = catalog
 
-    rows = cursor.execute("SELECT * FROM Games").fetchall()
-    for game in rows:
-        Games[game[0]] = game[1:]
+    #
+    # User helpers
+    #
+    def user_exists(self, user_id: int) -> bool:
+        row = self.cursor.execute("SELECT 1 FROM Users WHERE t_id = ?", (user_id,)).fetchone()
+        return row is not None
 
-    rows = cursor.execute("SELECT * FROM Users").fetchall()
-    for user in rows:
-        Users[user[0]] = user[1:]
-
-
-#
-# User helpers
-#
-def add_user(cursor, connection, user):
-    Users[user.id] = (user.username, 0)
-    cursor.execute("INSERT INTO Users VALUES ({}, '{}', {})".format(user.id, user.username, 0))
-    connection.commit()
-
-
-def update_scores(cursor, connection, scores):
-    for user_id in scores:
-        if scores[user_id] != Users[user_id]:
-            Users[user_id] = (Users[user_id][0], scores[user_id])
-            cursor.execute("UPDATE Users Set score = {} WHERE t_id = {}".format(scores[user_id], user_id))
-            connection.commit()
-
-
-def del_user(cursor, connection, user_id):
-    del Users[user_id]
-    cursor.execute("DELETE FROM Users WHERE t_id={};".format(user_id))
-    connection.commit()
-
-
-#
-# Game helpers
-#
-def current_game(cursor):
-    games = cursor.execute("SELECT * FROM Games WHERE isPlayed = 1").fetchall()
-    try:
-        return games[-1][0]
-    except:
-        return 1
-
-
-def set_game(cursor, connection, game_id, goals_a, goals_b, pl=1):
-    if Games[game_id] != (Games[game_id][0], Games[game_id][1], goals_a, goals_b, pl):
-        Games[game_id] = (Games[game_id][0], Games[game_id][1], goals_a, goals_b, pl)
-        if pl:
-            score_calc(cursor, connection, game_id)
-        cursor.execute(
-            "UPDATE Games Set goals_a = {}, goals_b = {}, isPlayed = {} WHERE id = {}".format(
-                goals_a, goals_b, pl, game_id
-            )
+    def add_user(self, user):
+        self.cursor.execute(
+            "INSERT INTO Users (t_id, username, score) VALUES (?, ?, 0)",
+            (user.id, user.username),
         )
-        connection.commit()
+        self.connection.commit()
 
+    def get_user(self, user_id: int):
+        return self.cursor.execute(
+            "SELECT t_id, username, score FROM Users WHERE t_id = ?", (user_id,)
+        ).fetchone()
 
-def fetch_result(cursor, connection, game_id):
-    query = 'https://www.google.com/search?q=' + Games[game_id][0] + '+vs+' + Games[game_id][1]
-    source = requests.get(query, headers={'accept-language': 'en-US,en;q=0.9'}).text
-    soup = BeautifulSoup(source, 'lxml')
-    soup = soup.find_all('div', class_="BNeawe deIvCb AP7Wnd")
+    def get_all_users(self):
+        return self.cursor.execute("SELECT t_id, username, score FROM Users").fetchall()
 
-    print("Google Says: ", game_id, soup[1].text, soup[2].text)
+    def del_user(self, user_id: int):
+        self.cursor.execute("DELETE FROM Predictions WHERE user = ?", (user_id,))
+        self.cursor.execute("DELETE FROM Users WHERE t_id = ?", (user_id,))
+        self.connection.commit()
 
-    if soup[0].text.split(" ")[0] == Games[game_id][0]:
-        set_game(cursor, connection, game_id, soup[1].text, soup[2].text)
-    else:
-        set_game(cursor, connection, game_id, soup[2].text, soup[1].text)
+    def update_scores(self, scores: dict[int, int]):
+        for user_id, score in scores.items():
+            self.cursor.execute("UPDATE Users SET score = ? WHERE t_id = ?", (score, user_id))
+        self.connection.commit()
 
+    #
+    # Game helpers
+    #
+    def game_exists(self, game_id: int) -> bool:
+        return game_id in self.catalog.games
 
-#
-# Prediction helpers
-#
-def pred_is_new(user_id, game_id):
-    return (user_id, game_id) not in Predictions
+    def game(self, game_id: int) -> Game:
+        return self.catalog.games[game_id]
 
+    def list_game_ids(self):
+        return sorted(self.catalog.games.keys())
 
-def pred_is_av(game_id):
-    return not Games[game_id][4]
+    def current_game(self):
+        played = [g.id for g in self.catalog.games.values() if g.is_played]
+        return max(played) if played else 1
 
-
-def pred_is_possib(pred):
-    return pred[1] in Games and pred[2] >= 0 and pred[3] >= 0
-
-
-def add_pred(cursor, connection, pred):
-    Predictions[(pred[0], pred[1])] = (pred[2], pred[3], pred[4])
-    cursor.execute(
-        "INSERT INTO Predictions (user, game, pred_a, pred_b, score) VALUES ({}, {}, {}, {}, {});".format(
-            pred[0], pred[1], pred[2], pred[3], pred[4]
+    def set_game(self, game_id: int, goals_a: int, goals_b: int, is_played: int = 1):
+        game = self.catalog.games[game_id]
+        changed = (
+            game.goals_a != goals_a
+            or game.goals_b != goals_b
+            or game.is_played != is_played
         )
-    )
-    connection.commit()
+        if not changed:
+            return
 
+        game.goals_a = goals_a
+        game.goals_b = goals_b
+        game.is_played = is_played
 
-def edit_pred(cursor, connection, pred):
-    Predictions[(pred[0], pred[1])] = pred[2:]
-    cursor.execute(
-        "UPDATE Predictions Set pred_a = {}, pred_b = {} , score = {} WHERE user = {} AND game = {}".format(
-            pred[2], pred[3], pred[4], pred[0], pred[1]
+        if is_played:
+            self.score_calc(game_id)
+
+    def fetch_result(self, game_id: int):
+        from bs4 import BeautifulSoup
+        import requests
+
+        game = self.catalog.games[game_id]
+        query = f"https://www.google.com/search?q={game.team_a}+vs+{game.team_b}"
+        source = requests.get(query, headers={"accept-language": "en-US,en;q=0.9"}).text
+        soup = BeautifulSoup(source, "lxml")
+        soup = soup.find_all("div", class_="BNeawe deIvCb AP7Wnd")
+
+        print("Google Says: ", game_id, soup[1].text, soup[2].text)
+
+        if soup[0].text.split(" ")[0] == game.team_a:
+            self.set_game(game_id, int(soup[1].text), int(soup[2].text))
+        else:
+            self.set_game(game_id, int(soup[2].text), int(soup[1].text))
+
+    #
+    # Prediction helpers
+    #
+    def pred_is_new(self, user_id: int, game_id: int):
+        row = self.cursor.execute(
+            "SELECT 1 FROM Predictions WHERE user = ? AND game = ?", (user_id, game_id)
+        ).fetchone()
+        return row is None
+
+    def pred_is_av(self, game_id: int):
+        return not self.catalog.games[game_id].is_played
+
+    def pred_is_possib(self, pred):
+        return pred[1] in self.catalog.games and pred[2] >= 0 and pred[3] >= 0
+
+    def add_pred(self, pred):
+        self.cursor.execute(
+            "INSERT INTO Predictions (user, game, pred_a, pred_b, score) VALUES (?, ?, ?, ?, ?)",
+            (pred[0], pred[1], pred[2], pred[3], pred[4]),
         )
-    )
-    connection.commit()
+        self.connection.commit()
 
+    def edit_pred(self, pred):
+        self.cursor.execute(
+            "UPDATE Predictions SET pred_a = ?, pred_b = ?, score = ? WHERE user = ? AND game = ?",
+            (pred[2], pred[3], pred[4], pred[0], pred[1]),
+        )
+        self.connection.commit()
 
-#
-# Scoring helpers
-#
-def point_calc(game_id, pred_a, pred_b):
-    if Games[game_id][4] == 0:
-        return 0
-    goals_a = Games[game_id][2]
-    goals_b = Games[game_id][3]
-    if int(pred_a) == int(goals_a) and int(pred_b) == int(goals_b):
-        return 10
-    if int(pred_a) - int(pred_b) == int(goals_a) - int(goals_b):
-        return 7
-    point = 0
-    if (int(pred_a) > int(pred_b) and int(goals_a) > int(goals_b)) or (
-        int(pred_a) < int(pred_b) and int(goals_a) < int(goals_b)
-    ):
-        point += 4
-    if int(pred_a) == int(goals_a) or int(pred_b) == int(goals_b):
-        point += 1
-    return point
+    def get_prediction(self, user_id: int, game_id: int):
+        row = self.cursor.execute(
+            "SELECT pred_a, pred_b, score FROM Predictions WHERE user = ? AND game = ?",
+            (user_id, game_id),
+        ).fetchone()
+        return row
 
+    def get_user_predictions(self, user_id: int):
+        rows = self.cursor.execute(
+            "SELECT game, pred_a, pred_b, score FROM Predictions WHERE user = ? ORDER BY game",
+            (user_id,),
+        ).fetchall()
+        return {row[0]: (row[1], row[2], row[3]) for row in rows}
 
-def score_calc(cursor, connection, game_id):
-    for user_id in Users:
-        if (user_id, game_id) in Predictions:
-            prediction = Predictions[(user_id, game_id)]
-            point = point_calc(game_id, prediction[0], prediction[1])
-            if Predictions[(user_id, game_id)] != (prediction[0], prediction[1], point):
-                Predictions[(user_id, game_id)] = (prediction[0], prediction[1], point)
-                edit_pred(cursor, connection, (user_id, game_id, prediction[0], prediction[1], point))
+    def get_predictions_for_game(self, game_id: int):
+        return self.cursor.execute(
+            """
+            SELECT p.user, u.username, p.pred_a, p.pred_b, p.score
+            FROM Predictions p
+            JOIN Users u ON u.t_id = p.user
+            WHERE p.game = ?
+            """,
+            (game_id,),
+        ).fetchall()
+
+    #
+    # Scoring helpers
+    #
+    def point_calc(self, game_id: int, pred_a: int, pred_b: int):
+        game = self.catalog.games[game_id]
+        if game.is_played == 0:
+            return 0
+
+        goals_a = game.goals_a
+        goals_b = game.goals_b
+
+        if int(pred_a) == int(goals_a) and int(pred_b) == int(goals_b):
+            return 10
+        if int(pred_a) - int(pred_b) == int(goals_a) - int(goals_b):
+            return 7
+
+        point = 0
+        if (int(pred_a) > int(pred_b) and int(goals_a) > int(goals_b)) or (
+            int(pred_a) < int(pred_b) and int(goals_a) < int(goals_b)
+        ):
+            point += 4
+        if int(pred_a) == int(goals_a) or int(pred_b) == int(goals_b):
+            point += 1
+        return point
+
+    def score_calc(self, game_id: int):
+        rows = self.cursor.execute(
+            "SELECT user, pred_a, pred_b, score FROM Predictions WHERE game = ?", (game_id,)
+        ).fetchall()
+        for user_id, pred_a, pred_b, old_score in rows:
+            point = self.point_calc(game_id, pred_a, pred_b)
+            if old_score != point:
+                self.cursor.execute(
+                    "UPDATE Predictions SET score = ? WHERE user = ? AND game = ?",
+                    (point, user_id, game_id),
+                )
+        self.connection.commit()
+
+    def calculate_user_scores(self):
+        scores = {user_id: 0 for user_id, _, _ in self.get_all_users()}
+        rows = self.cursor.execute("SELECT user, game, score FROM Predictions").fetchall()
+        for user_id, game_id, score in rows:
+            if self.catalog.games.get(game_id) and self.catalog.games[game_id].is_played:
+                scores[user_id] += score
+        self.update_scores(scores)
+        return scores

@@ -3,12 +3,6 @@ import sqlite3
 from pathlib import Path
 from functools import wraps
 
-#
-# States
-#
-Users = {}
-Games = {}
-Predictions = {}
 
 #
 # Config
@@ -42,7 +36,8 @@ def auth(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
         user_id = update.effective_message.from_user.id
-        if user_id not in Users:
+        service = context.application.bot_data["service"]
+        if not service.user_exists(user_id):
             print("Unauthorized access denied.")
             return
         return await func(update, context)

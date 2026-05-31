@@ -1,119 +1,111 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.core import Users, Games, Predictions, restricted
-from app import services
+from app.core import restricted
 
 
 #
 # Admin moderation handlers
 #
-def build_admin_handlers(cursor, connection, admins, unknown):
+def build_admin_handlers(service, admins, unknown):
     @restricted(admins)
     async def delu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            u = context.args[0]
-            uid = None
-            for x in Users:
-                if Users[x][0] == u:
-                    uid = x
-                    break
-            if uid:
-                if uid in admins:
-                    raise KeyError
-                if Users[uid][1] != 0:
-                    try:
-                        f = context.args[1]
-                    except:
-                        f = None
-                    if f == "1" or f == "f":
-                        services.del_user(cursor, connection, uid)
-                        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"یوزر {u} پاک شد!")
-                    else:
-                        await context.bot.send_message(chat_id=update.effective_chat.id, text="یوزر امتیاز دارد!")
-                else:
-                    services.del_user(cursor, connection, uid)
-                    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"یوزر {u} پاک شد!")
-            else:
+            username = context.args[0]
+            users = service.get_all_users()
+            user_row = next((u for u in users if u[1] == username), None)
+            if not user_row:
                 raise KeyError
-        except:
+
+            uid, _, score = user_row
+            if uid in admins:
+                raise KeyError
+
+            if score != 0:
+                force = context.args[1] if len(context.args) > 1 else None
+                if force in ("1", "f"):
+                    service.del_user(uid)
+                    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"یوزر {username} پاک شد!")
+                else:
+                    await context.bot.send_message(chat_id=update.effective_chat.id, text="یوزر امتیاز دارد!")
+            else:
+                service.del_user(uid)
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=f"یوزر {username} پاک شد!")
+        except Exception:
             await unknown(update, context)
 
-    #
-    # Admin game control handlers
-    #
     @restricted(admins)
     async def set_game_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             n = int(context.args[0])
-            if 0 < n < len(Games) + 1:
+            if service.game_exists(n):
                 p1 = int(context.args[1])
                 p2 = int(context.args[2])
-                services.set_game(cursor, connection, n, p1, p2)
+                service.set_game(n, p1, p2, 1)
+                g = service.game(n)
                 text = "نتیجه ثبت شده به صورت دستی تغییر کرد"
-                text += "\n{}: {} {} - {} {}".format(n, Games[n][0], Games[n][2], Games[n][3], Games[n][1])
+                text += f"\n{n}: {g.team_a} {g.goals_a} - {g.goals_b} {g.team_b}"
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             else:
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=" مشخصات بازی اشتباه وارد شده است")
-        except:
+        except Exception:
             await unknown(update, context)
 
     @restricted(admins)
     async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             n = int(context.args[0])
-            if not (0 < n < len(Games) + 1) or Games[n][4]:
+            if not service.game_exists(n) or service.game(n).is_played:
                 text = "بازی {} فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             else:
-                services.set_game(cursor, connection, n, 0, 0, 1)
+                service.set_game(n, 0, 0, 1)
+                g = service.game(n)
                 text = "بازی: "
-                text += "\n{}: {} -  {}".format(n, Games[n][0], Games[n][1])
+                text += f"\n{n}: {g.team_a} -  {g.team_b}"
                 text += "\n شروع شد و فرصت پیش‌بینی به پایان رسید."
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-        except:
+        except Exception:
             await unknown(update, context)
 
     @restricted(admins)
     async def unplay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             n = int(context.args[0])
-            if not (0 < n < len(Games) + 1) or not Games[n][4]:
+            if not service.game_exists(n) or not service.game(n).is_played:
                 text = "بازی {} غیر فعال است یا مشخصات بازی اشتباه وارد شده است".format(n)
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
             else:
-                services.set_game(cursor, connection, n, 0, 0, 0)
+                service.set_game(n, 0, 0, 0)
+                g = service.game(n)
                 text = "بازی: "
-                text += "\n{}: {} - {}".format(n, Games[n][0], Games[n][1])
+                text += f"\n{n}: {g.team_a} - {g.team_b}"
                 text += "\n برای پیش‌بینی فعال شد."
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-        except:
+        except Exception:
             await unknown(update, context)
 
-    #
-    # Admin scoring/notification handlers
-    #
     @restricted(admins)
     async def calc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        scores = {x: 0 for x in Users}
-        for x in Predictions:
-            if Games[x[1]][4]:
-                scores[x[0]] += Predictions[x][2]
-        services.update_scores(cursor, connection, scores)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text='محاسبه امتیاز انجام شد')
+        service.calculate_user_scores()
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="محاسبه امتیاز انجام شد")
 
     @restricted(admins)
     async def warn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             n = int(context.args[0])
-        except:
-            c = services.current_game(cursor)
-            n = c + 1 if Games[c][4] else c
-        text = 'بازی شماره {} به زودی شروع خواهد شد.'.format(n)
-        text += '\nهرچه سریعتر پیش‌بینی خود را وارد کنید:'
-        for u in Users:
-            if (u, n) not in Predictions:
-                text += "\n@{}".format(Users[u][0])
+        except Exception:
+            c = service.current_game()
+            n = c + 1 if service.game_exists(c) and service.game(c).is_played else c
+
+        text = "بازی شماره {} به زودی شروع خواهد شد.".format(n)
+        text += "\nهرچه سریعتر پیش‌بینی خود را وارد کنید:"
+
+        users = service.get_all_users()
+        for uid, username, _ in users:
+            if service.pred_is_new(uid, n):
+                text += f"\n@{username}"
+
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     return {
