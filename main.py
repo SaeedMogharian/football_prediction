@@ -4,6 +4,7 @@ from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHan
 
 from app.core import load_settings, create_connection, init_db
 from app.services import init_state
+from app.schedule import sync_schedule
 from app.handlers import build_handlers
 
 
@@ -23,6 +24,7 @@ def main():
     cursor = connection.cursor()
 
     init_db(cursor, connection, "schema.sql")
+    sync_schedule(cursor, connection)
     init_state(cursor)
 
     handlers = build_handlers(cursor, connection, admins, is_open)

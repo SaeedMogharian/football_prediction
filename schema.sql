@@ -5,27 +5,27 @@ CREATE TABLE IF NOT EXISTS "Users" (
 );
 
 CREATE TABLE IF NOT EXISTS "Teams" (
-    "Name" TEXT NOT NULL UNIQUE,
-    PRIMARY KEY("Name")
+    "name" TEXT NOT NULL UNIQUE,
+    PRIMARY KEY("name")
 );
 
 CREATE TABLE IF NOT EXISTS "Games" (
     "id" INTEGER NOT NULL UNIQUE,
-    "team1" TEXT,
-    "team2" TEXT,
-    "res1" INTEGER,
-    "res2" INTEGER,
+    "team_a" TEXT,
+    "team_b" TEXT,
+    "goals_a" INTEGER,
+    "goals_b" INTEGER,
     "isPlayed" INTEGER COLLATE BINARY,
     PRIMARY KEY("id" AUTOINCREMENT),
-    FOREIGN KEY("team2") REFERENCES "Teams"("Name"),
-    FOREIGN KEY("team1") REFERENCES "Teams"("Name")
+    FOREIGN KEY("team_b") REFERENCES "Teams"("name"),
+    FOREIGN KEY("team_a") REFERENCES "Teams"("name")
 );
 
 CREATE TABLE IF NOT EXISTS "Predictions" (
     "user" INTEGER NOT NULL,
     "game" INTEGER NOT NULL,
-    "pred1" INTEGER,
-    "pred2" INTEGER,
+    "pred_a" INTEGER,
+    "pred_b" INTEGER,
     "score" INTEGER,
     PRIMARY KEY("user","game"),
     FOREIGN KEY("user") REFERENCES "Users"("t_id"),

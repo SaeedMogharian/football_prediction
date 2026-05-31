@@ -1,0 +1,20 @@
+{
+  "games": [
+    {
+      "id": 1,
+      "team_a": "Argentina",
+      "team_b": "Brazil",
+      "goals_a": 0,
+      "goals_b": 0,
+      "isPlayed": 0
+    },
+    {
+      "id": 2,
+      "team_a": "France",
+      "team_b": "Germany",
+      "goals_a": 0,
+      "goals_b": 0,
+      "isPlayed": 0
+    }
+  ]
+}

@@ -4,14 +4,14 @@ A simple project that creates a telegram bot for a friend group; letting them to
 ## Requirements
 - python
     - install the requirements using: pip install re.txt
-- a setting.json file
-```json
-{  
-    "is_open":  true/false, 
-    "token":    "YourBotToken",   
-    "admins":   ["Admin1NumeralTelgeramID", "Admin2NumeralTelgeramID", ...]      
-}  
-```
+- a setting.json file created from setting.json.example
+
+### db.sqlite
+The db in which we store
+- Teams
+- Games
+- Users
+- Predictions
 
 ## Run the bot
 1. Install dependencies:
@@ -29,47 +29,6 @@ A simple project that creates a telegram bot for a friend group; letting them to
    ```
 5. Open Telegram and send `/start` to your bot.
 
-### db.sqlite3
-
-```sql
-# Teams
-CREATE TABLE "Teams" ( 
-  "Name" TEXT NOT NULL UNIQUE,
-   PRIMARY KEY("Name") 
-   )
-
-# Games
-CREATE TABLE "Games" ( 
-  "id" INTEGER NOT NULL UNIQUE,
-   "team1" TEXT, 
-   "team2" TEXT, 
-   "res1" INTEGER, 
-   "res2" INTEGER, 
-   "isPlayed" INTEGER COLLATE BINARY, 
-   PRIMARY KEY("id" AUTOINCREMENT), 
-   FOREIGN KEY("team2") REFERENCES "Teams"("Name"),
-   FOREIGN KEY("team1") REFERENCES "Teams"("Name") 
-   )
-
-# Users
-CREATE TABLE "Users" ( 
-  "t_id" INTEGER NOT NULL UNIQUE, 
-  "username" TEXT UNIQUE, 
-  "score" INTEGER DEFAULT 0 )
-
-# Predictions
-CREATE TABLE "Predictions" ( 
-  "user" INTEGER NOT NULL, 
-  "game" INTEGER NOT NULL, 
-  "pred1" INTEGER, 
-  "pred2" INTEGER, 
-  "score" INTEGER, 
-  PRIMARY KEY("user","game"), 
-  FOREIGN KEY("user") REFERENCES "Users"("t_id"), 
-  FOREIGN KEY("game") REFERENCES "Games"("id") )
-```
-
-
 ## Commands
 ### User commands
 - start:
@@ -79,7 +38,7 @@ CREATE TABLE "Predictions" (
   - send list of games and their results
 - pred:
   - get prediction in following scheme:
-  - /pred (gameID) (goal_pred_for_team1) (goal_pred_for_team2)
+  - /pred (gameID) (pred_a) (pred_b)
   - send confirmation
 - rank:
   - send ranking of all users that send prediction to the bot
@@ -93,7 +52,7 @@ CREATE TABLE "Predictions" (
 ### Admin commands
 - set (set_game)
   - get game results and edit it in the game data:
-  - /set (gameID) (result_for_team1) )result_for_team2)
+  - /set (gameID) (goals_a) (goals_b)
   - send confirmation
 - calc
   - calculate all points for all users
@@ -103,7 +62,6 @@ CREATE TABLE "Predictions" (
 
 ### Need to be implemented:
 - authentication from admin for new users
-- different tournament implemetation
 - different groups implementation
 
 Helpful Documentation:

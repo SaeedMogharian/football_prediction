@@ -24,7 +24,7 @@ def build_user_handlers(cursor, connection, is_open):
             if user.id in Users:
                 text += '\nبه بات پیش‌بینی خوش اومدی!'
                 text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-                text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+                text += "\n/pred <gameID> <team_a goals> <team_b goals>"
 
             await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
         except:
@@ -79,7 +79,7 @@ def build_user_handlers(cursor, connection, is_open):
                 raise ValueError
         except:
             text = "لطفا طبق الگوی خواسته شده و از بین بازی‌های موجود پیش‌بینی را وارد کنید"
-            text += "\n/pred <gameID> <team1 goal> <team2 goal>"
+            text += "\n/pred <gameID> <team_a goals> <team_b goals>"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     #

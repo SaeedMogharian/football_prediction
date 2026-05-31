@@ -55,13 +55,15 @@ def current_game(cursor):
         return 1
 
 
-def set_game(cursor, connection, game_id, res1, res2, pl=1):
-    if Games[game_id] != (Games[game_id][0], Games[game_id][1], res1, res2, pl):
-        Games[game_id] = (Games[game_id][0], Games[game_id][1], res1, res2, pl)
+def set_game(cursor, connection, game_id, goals_a, goals_b, pl=1):
+    if Games[game_id] != (Games[game_id][0], Games[game_id][1], goals_a, goals_b, pl):
+        Games[game_id] = (Games[game_id][0], Games[game_id][1], goals_a, goals_b, pl)
         if pl:
             score_calc(cursor, connection, game_id)
         cursor.execute(
-            "UPDATE Games Set res1 = {}, res2 = {}, isPlayed = {} WHERE id = {}".format(res1, res2, pl, game_id)
+            "UPDATE Games Set goals_a = {}, goals_b = {}, isPlayed = {} WHERE id = {}".format(
+                goals_a, goals_b, pl, game_id
+            )
         )
         connection.commit()
 
@@ -98,7 +100,7 @@ def pred_is_possib(pred):
 def add_pred(cursor, connection, pred):
     Predictions[(pred[0], pred[1])] = (pred[2], pred[3], pred[4])
     cursor.execute(
-        "INSERT INTO Predictions (user, game, pred1, pred2, score) VALUES ({}, {}, {}, {}, {});".format(
+        "INSERT INTO Predictions (user, game, pred_a, pred_b, score) VALUES ({}, {}, {}, {}, {});".format(
             pred[0], pred[1], pred[2], pred[3], pred[4]
         )
     )
@@ -108,7 +110,7 @@ def add_pred(cursor, connection, pred):
 def edit_pred(cursor, connection, pred):
     Predictions[(pred[0], pred[1])] = pred[2:]
     cursor.execute(
-        "UPDATE Predictions Set pred1 = {}, pred2 = {} , score = {} WHERE user = {} AND game = {}".format(
+        "UPDATE Predictions Set pred_a = {}, pred_b = {} , score = {} WHERE user = {} AND game = {}".format(
             pred[2], pred[3], pred[4], pred[0], pred[1]
         )
     )
@@ -118,19 +120,21 @@ def edit_pred(cursor, connection, pred):
 #
 # Scoring helpers
 #
-def point_calc(game_id, pred1, pred2):
+def point_calc(game_id, pred_a, pred_b):
     if Games[game_id][4] == 0:
         return 0
-    res1 = Games[game_id][2]
-    res2 = Games[game_id][3]
-    if int(pred1) == int(res1) and int(pred2) == int(res2):
+    goals_a = Games[game_id][2]
+    goals_b = Games[game_id][3]
+    if int(pred_a) == int(goals_a) and int(pred_b) == int(goals_b):
         return 10
-    if int(pred1) - int(pred2) == int(res1) - int(res2):
+    if int(pred_a) - int(pred_b) == int(goals_a) - int(goals_b):
         return 7
     point = 0
-    if (int(pred1) > int(pred2) and int(res1) > int(res2)) or (int(pred1) < int(pred2) and int(res1) < int(res2)):
+    if (int(pred_a) > int(pred_b) and int(goals_a) > int(goals_b)) or (
+        int(pred_a) < int(pred_b) and int(goals_a) < int(goals_b)
+    ):
         point += 4
-    if int(pred1) == int(res1) or int(pred2) == int(res2):
+    if int(pred_a) == int(goals_a) or int(pred_b) == int(goals_b):
         point += 1
     return point
 
