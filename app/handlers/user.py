@@ -12,12 +12,21 @@ def build_user_handlers(service, is_open_signup):
         is_super_admin = user.id in admin_ids
 
         if not is_super_admin and chat.type not in ("group", "supergroup"):
-            await context.bot.send_message(chat_id=chat.id, text="استفاده از ربات فقط در گروه‌های تایید‌شده ممکن است.")
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این ربات در گروه کار می‌کند. لطفا ربات را به گروه اضافه کنید و دستور /start را داخل گروه اجرا کنید.",
+            )
+            return
+        if not is_super_admin and not service.is_group_registered(chat.id):
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این گروه هنوز ثبت نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
+            )
             return
         if not is_super_admin and not service.is_group_verified(chat.id):
             await context.bot.send_message(
                 chat_id=chat.id,
-                text="این گروه هنوز تایید نشده است. ادمین گروه باید /request_group_verification را اجرا کند.",
+                text="این گروه هنوز تایید نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
             )
             return
 
@@ -111,11 +120,21 @@ def build_user_handlers(service, is_open_signup):
     async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_id = update.effective_chat.id
         ranked_players = service.get_group_rankings(group_id)
+        ranking_by_user_id = {user_id: points for user_id, _username, points in ranked_players}
+        group_rankings = []
+
+        for user_id, username, _ in service.get_all_users():
+            try:
+                member = await context.bot.get_chat_member(group_id, user_id)
+            except Exception:
+                continue
+            if member.status not in ("member", "administrator", "creator", "restricted"):
+                continue
+            group_rankings.append((user_id, username, ranking_by_user_id.get(user_id, 0)))
+
+        group_rankings.sort(key=lambda item: (-item[2], item[1] or ""))
         text = "رده‌بندی گروه:\n"
-        if not ranked_players:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-            return
-        for index, (_, username, points) in enumerate(ranked_players, start=1):
+        for index, (_, username, points) in enumerate(group_rankings, start=1):
             text += f"{index} - {username} : {points}\n"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 

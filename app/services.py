@@ -148,6 +148,10 @@ class Service:
         group_data = self._groups_cache.get(chat_id)
         return bool(group_data and group_data[1] == 1)
 
+    def is_group_registered(self, chat_id: int) -> bool:
+        self._load_groups_cache()
+        return chat_id in self._groups_cache
+
     def add_teams(self, teams: list[str]):
         for team in teams:
             self.cursor.execute("INSERT OR IGNORE INTO Teams (name) VALUES (?)", (team,))

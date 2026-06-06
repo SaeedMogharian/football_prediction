@@ -59,13 +59,28 @@ def group_user(func):
         is_super_admin = user_id in admin_ids
 
         if not is_super_admin and not _is_group_chat(chat):
-            print("Unauthorized: verified group chat required.")
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این دستور فقط در گروه قابل اجرا است.",
+            )
+            return
+        if not is_super_admin and not service.is_group_registered(chat.id):
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این گروه هنوز ثبت نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
+            )
             return
         if not is_super_admin and not service.is_group_verified(chat.id):
-            print("Unauthorized: group is not verified.")
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این گروه هنوز تایید نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
+            )
             return
         if not service.user_exists(user_id):
-            print("Unauthorized: user is not registered.")
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="برای استفاده از این دستور ابتدا /start را اجرا کنید، سپس دوباره تلاش کنید.",
+            )
             return
         return await func(update, context, *args, **kwargs)
 
@@ -81,10 +96,19 @@ def group_admin(func):
         chat = update.effective_chat
 
         if not _is_group_chat(chat):
-            print("Unauthorized: group chat required.")
+            await context.bot.send_message(chat_id=chat.id, text="این دستور فقط در گروه قابل اجرا است.")
+            return
+        if not service.is_group_registered(chat.id):
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این گروه هنوز ثبت نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
+            )
             return
         if not service.is_group_verified(chat.id):
-            print("Unauthorized: group is not verified.")
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text="این گروه هنوز تایید نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
+            )
             return
         if user_id in admin_ids:
             return await func(update, context, *args, **kwargs)
@@ -93,7 +117,7 @@ def group_admin(func):
         if any(admin.user.id == user_id for admin in chat_admins):
             return await func(update, context, *args, **kwargs)
 
-        print("Unauthorized: group admin or super admin required.")
+        await context.bot.send_message(chat_id=chat.id, text="فقط ادمین گروه یا ادمین سراسری می‌تواند این دستور را اجرا کند.")
         return
 
     return wrapped
