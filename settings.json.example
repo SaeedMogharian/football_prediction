@@ -1,6 +1,8 @@
 {
   "is_open": true,
   "token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "prediction_close_minutes": 0,
+  "reminder_offsets_minutes": [10, 1],
   "admins": [
     "123456789"
   ]

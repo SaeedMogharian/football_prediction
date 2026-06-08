@@ -59,19 +59,30 @@ def build_super_admin_handlers(service, unknown):
             games_to_add = []
             for game_line in game_lines:
                 fields = [part.strip() for part in game_line.split(",")]
-                if len(fields) not in (2, 5):
+                if len(fields) not in (2, 5, 6):
                     raise ValueError
                 if len(fields) == 2:
                     team_a, team_b = fields
                     goals_a, goals_b, is_played = 0, 0, 0
+                    played_at = None
+                elif len(fields) == 5:
+                    team_a, team_b = fields[0], fields[1]
+                    goals_a, goals_b, is_played = int(fields[2]), int(fields[3]), int(fields[4])
+                    played_at = None
                 else:
                     team_a, team_b = fields[0], fields[1]
                     goals_a, goals_b, is_played = int(fields[2]), int(fields[3]), int(fields[4])
-                games_to_add.append((team_a, team_b, goals_a, goals_b, is_played))
+                    played_at = fields[5]
+                games_to_add.append((team_a, team_b, goals_a, goals_b, is_played, played_at))
             service.add_games(games_to_add)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=f"{len(games_to_add)} بازی اضافه شد.")
         except Exception as error:
-            message = "فرمت درست:\n/add_games\nTeam A, Team B\nTeam C, Team D"
+            message = (
+                "فرمت درست:\n/add_games\n"
+                "Team A, Team B\n"
+                "Team C, Team D, goals_a, goals_b, is_played\n"
+                "Team E, Team F, goals_a, goals_b, is_played, YYYY-MM-DDTHH:MM:SS"
+            )
             if str(error):
                 message += f"\n\nخطا: {error}"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
@@ -143,10 +154,49 @@ def build_super_admin_handlers(service, unknown):
         service.calculate_user_scores()
         await context.bot.send_message(chat_id=update.effective_chat.id, text="محاسبه امتیاز انجام شد")
 
+    @super_admin
+    async def set_time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            payload = parse_multiline_command_payload(update)
+            rows = [line.strip() for line in payload.splitlines() if line.strip()]
+            if not rows:
+                if len(context.args) < 2:
+                    raise ValueError
+                rows = ["{},{}".format(context.args[0], context.args[1])]
+
+            updated_ids = []
+            for row in rows:
+                fields = [part.strip() for part in row.split(",")]
+                if len(fields) != 2:
+                    raise ValueError
+                game_id = int(fields[0])
+                played_at = fields[1]
+                if not service.set_game_time(game_id, played_at):
+                    raise ValueError(f"game_not_found:{game_id}")
+                updated_ids.append(game_id)
+
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"زمان {len(updated_ids)} بازی تنظیم شد: {', '.join(map(str, updated_ids))}",
+            )
+        except Exception as error:
+            message = (
+                "فرمت درست:\n"
+                "/set_time <game_id> <YYYY-MM-DDTHH:MM:SS>\n\n"
+                "یا چند خطی:\n"
+                "/set_time\n"
+                "1, 2026-06-21T21:30:00\n"
+                "2, 2026-06-21T23:30:00"
+            )
+            if str(error):
+                message += f"\n\nخطا: {error}"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+
     return {
         "verify_group": verify_group_command,
         "pending_groups": pending_groups_command,
         "recalc_scores": recalculate_scores_command,
+        "set_time": set_time_command,
         "set_result": set_game_result_command,
         "close_predictions": close_predictions_command,
         "open_predictions": open_predictions_command,

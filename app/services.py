@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 
 @dataclass
@@ -8,13 +9,15 @@ class Game:
     team_b: str
     goals_a: int
     goals_b: int
+    played_at: str | None
     is_played: int
 
 
 class Service:
-    def __init__(self, cursor, connection):
+    def __init__(self, cursor, connection, prediction_close_minutes: int = 0):
         self.cursor = cursor
         self.connection = connection
+        self.prediction_close_minutes = prediction_close_minutes
         self._teams_cache: set[str] | None = None
         self._games_cache: dict[int, Game] | None = None
         self._users_cache: dict[int, tuple[str, int]] | None = None
@@ -29,7 +32,7 @@ class Service:
     def _load_games_cache(self):
         if self._games_cache is None:
             rows = self.cursor.execute(
-                "SELECT id, team_a, team_b, goals_a, goals_b, isPlayed FROM Games"
+                "SELECT id, team_a, team_b, goals_a, goals_b, played_at, isPlayed FROM Games"
             ).fetchall()
             self._games_cache = {
                 row[0]: Game(
@@ -38,7 +41,8 @@ class Service:
                     team_b=row[2],
                     goals_a=row[3],
                     goals_b=row[4],
-                    is_played=row[5],
+                    played_at=row[5],
+                    is_played=row[6],
                 )
                 for row in rows
             }
@@ -182,35 +186,55 @@ class Service:
         played = [game.id for game in self._games_cache.values() if game.is_played]
         return max(played) if played else 1
 
-    def add_games(self, games: list[tuple[str, str, int, int, int]]):
-        for team_a, team_b, goals_a, goals_b, is_played in games:
+    def add_games(self, games: list[tuple[str, str, int, int, int, str | None]]):
+        for team_a, team_b, goals_a, goals_b, is_played, played_at in games:
             if not self.team_exists(team_a) or not self.team_exists(team_b):
                 raise ValueError(f"Unknown team in game: {team_a} vs {team_b}")
             self.cursor.execute(
                 """
-                INSERT INTO Games (team_a, team_b, goals_a, goals_b, isPlayed)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO Games (team_a, team_b, goals_a, goals_b, isPlayed, played_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (team_a, team_b, goals_a, goals_b, is_played),
+                (team_a, team_b, goals_a, goals_b, is_played, played_at),
             )
         self.connection.commit()
         self._games_cache = None
 
-    def set_game(self, game_id: int, goals_a: int, goals_b: int, is_played: int = 1):
+    def set_game(self, game_id: int, goals_a: int, goals_b: int, is_played: int = 1, played_at: str | None = None):
         if not self.game_exists(game_id):
             return
-        self.cursor.execute(
-            "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ? WHERE id = ?",
-            (goals_a, goals_b, is_played, game_id),
-        )
+        if played_at is None:
+            self.cursor.execute(
+                "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ? WHERE id = ?",
+                (goals_a, goals_b, is_played, game_id),
+            )
+        else:
+            self.cursor.execute(
+                "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ?, played_at = ? WHERE id = ?",
+                (goals_a, goals_b, is_played, played_at, game_id),
+            )
         self.connection.commit()
         self._load_games_cache()
         game = self._games_cache[game_id]
         game.goals_a = goals_a
         game.goals_b = goals_b
         game.is_played = is_played
+        if played_at is not None:
+            game.played_at = played_at
         if is_played:
             self.recalculate_game_scores(game_id)
+
+    def set_game_time(self, game_id: int, played_at: str):
+        if not self.game_exists(game_id):
+            return False
+        self.cursor.execute(
+            "UPDATE Games SET played_at = ? WHERE id = ?",
+            (played_at, game_id),
+        )
+        self.connection.commit()
+        self._load_games_cache()
+        self._games_cache[game_id].played_at = played_at
+        return True
 
     def fetch_result(self, game_id: int):
         from bs4 import BeautifulSoup
@@ -234,7 +258,35 @@ class Service:
         return (user_id, game_id, group_id) not in self._predictions_cache
 
     def is_prediction_open(self, game_id: int):
-        return not self.game(game_id).is_played
+        game = self.game(game_id)
+        if game.is_played:
+            return False
+        if not game.played_at:
+            return True
+        try:
+            played_at_dt = datetime.fromisoformat(game.played_at)
+        except Exception:
+            return True
+        now = datetime.now()
+        close_at = played_at_dt - timedelta(minutes=self.prediction_close_minutes)
+        return now < close_at
+
+    def list_verified_group_ids(self) -> list[int]:
+        self._load_groups_cache()
+        return [chat_id for chat_id, (_, is_verified) in self._groups_cache.items() if is_verified == 1]
+
+    def get_pending_prediction_usernames(self, game_id: int, group_id: int) -> list[str]:
+        usernames = []
+        for member_id, username, _ in self.get_all_users():
+            if not username:
+                continue
+            if self.is_new_prediction(member_id, game_id, group_id):
+                usernames.append(username)
+        return usernames
+
+    def games_with_datetime(self) -> list[Game]:
+        self._load_games_cache()
+        return [game for game in self._games_cache.values() if game.played_at]
 
     def is_valid_prediction_input(self, prediction_input):
         return self.game_exists(prediction_input[1]) and prediction_input[2] >= 0 and prediction_input[3] >= 0

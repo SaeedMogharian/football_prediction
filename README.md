@@ -9,7 +9,7 @@ Telegram bot for match prediction in a friend group.
   - `Users`
   - `Predictions`
 
-`goals_a`, `goals_b`, and `isPlayed` are dynamic game fields stored in DB and persist across bot restarts.
+`goals_a`, `goals_b`, `isPlayed`, and `played_at` are dynamic game fields stored in DB and persist across bot restarts.
 
 ## Requirements
 - Python 3
@@ -31,7 +31,7 @@ Telegram bot for match prediction in a friend group.
 
 ## SQLite Schema
 - `Teams(name)`
-- `Games(id, team_a, team_b, goals_a, goals_b, isPlayed)`
+- `Games(id, team_a, team_b, goals_a, goals_b, played_at, isPlayed)`
 - `Users(t_id, username, score)`
 - `Predictions(user, game, pred_a, pred_b, score)`
 - `Groups(chat_id, title, is_verified, requested_by)`
@@ -53,6 +53,7 @@ Telegram bot for match prediction in a friend group.
 
 ### Super Admin
 - `/set_result <game_id> <goals_a> <goals_b>`
+- `/set_time <game_id> <YYYY-MM-DDTHH:MM:SS>`
 - `/close_predictions <game_id>`
 - `/open_predictions <game_id>`
 - `/recalc_scores`
@@ -74,11 +75,31 @@ Telegram bot for match prediction in a friend group.
 - `/add_games` with newline-separated rows (comma-separated):
   - minimal: `team_a, team_b`
   - full: `team_a, team_b, goals_a, goals_b, isPlayed`
+  - scheduled: `team_a, team_b, goals_a, goals_b, isPlayed, YYYY-MM-DDTHH:MM:SS`
   ```text
   /add_games
   Argentina, Brazil
   France, Germany, 0, 0, 0
+  England, Spain, 0, 0, 0, 2026-06-21T21:30:00
   ```
+
+- `/set_time` supports single or multiline input:
+  ```text
+  /set_time 1 2026-06-21T21:30:00
+  ```
+  ```text
+  /set_time
+  1, 2026-06-21T21:30:00
+  2, 2026-06-21T23:30:00
+  ```
+
+## Scheduling Settings
+- `prediction_close_minutes`: closes predictions this many minutes before kickoff.
+  - Example: `0` closes exactly at kickoff.
+  - Example: `10` closes 10 minutes before kickoff.
+  - Example: `-5` closes 5 minutes after kickoff.
+- `reminder_offsets_minutes`: list of reminder offsets (in minutes before kickoff), sent to verified groups.
+  - Example: `[10, 1]` sends reminders 10 and 1 minutes before game time.
 
 ### Group Verification Flow
 - Group admin runs `/request_group_verification` inside the group.
