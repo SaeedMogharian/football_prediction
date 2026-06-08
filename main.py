@@ -1,5 +1,6 @@
 import logging
 
+from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
 
 from app.core import load_settings, create_connection, init_db
@@ -27,12 +28,25 @@ def main():
 
     handlers = build_handlers(service, admin_ids, is_open_signup)
 
-    application = ApplicationBuilder().token(bot_token).build()
+    async def post_init(application):
+        await application.bot.set_my_commands(
+            [
+                BotCommand("start", "شروع و ثبت‌نام"),
+                BotCommand("predict", "ثبت پیش‌بینی"),
+                BotCommand("games", "لیست بازی‌ها"),
+                BotCommand("rank", "رده‌بندی گروه"),
+                BotCommand("my_stats", "آمار شخصی"),
+                BotCommand("results", "نتایج پیش‌بینی‌ها"),
+                BotCommand("cancel", "لغو ثبت پیش‌بینی"),
+            ]
+        )
+
+    application = ApplicationBuilder().token(bot_token).post_init(post_init).build()
     application.bot_data["service"] = service
     application.bot_data["admin_ids"] = admin_ids
 
     application.add_handler(CommandHandler("start", handlers["start"]))
-    application.add_handler(CommandHandler("predict", handlers["predict"]))
+    application.add_handler(handlers["predict_conversation"])
     application.add_handler(CommandHandler("games", handlers["games"]))
     application.add_handler(CommandHandler("rank", handlers["rank"]))
     application.add_handler(CommandHandler("my_stats", handlers["my_stats"]))
