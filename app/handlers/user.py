@@ -1,7 +1,9 @@
-from telegram import Update
-from telegram.ext import ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 
 from app.core import group_user
+
+SELECT_GAME, ENTER_SCORE = range(2)
 
 
 def build_user_handlers(service, is_open_signup):
@@ -42,8 +44,8 @@ def build_user_handlers(service, is_open_signup):
                 return
 
         text = f"سلام {user.first_name}\nبه بات پیش‌بینی خوش اومدی!"
-        text += "\nبرای پیش بینی لیست بازی‌ها رو از /games ببین و این جوری پیش‌بینی‌ت رو ثبت کن:"
-        text += "\n/predict <game_id> <team_a_goals> <team_b_goals>"
+        text += "\nبرای پیش‌بینی، دستور /predict را بزن و بازی و نتیجه را انتخاب کن."
+        text += "\nیا مستقیم: /predict <game_id> <team_a_goals> <team_b_goals>"
         await context.bot.send_message(chat_id=chat.id, text=text)
 
     @group_user
@@ -74,47 +76,213 @@ def build_user_handlers(service, is_open_signup):
 
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 
+    def _open_games_for_prediction(visible_count: int = 8):
+        game_ids = service.list_game_ids()
+        if not game_ids:
+            return []
+
+        current_game_id = service.current_game()
+        start_game_id = max(current_game_id - visible_count // 4, 1)
+        start_game_id = min(max(len(game_ids) - visible_count + 1, 1), start_game_id)
+        end_game_id = min(start_game_id + visible_count, len(game_ids) + 1)
+
+        open_games = []
+        for game_id in range(start_game_id, end_game_id):
+            if service.game_exists(game_id) and service.is_prediction_open(game_id):
+                open_games.append(game_id)
+        return open_games
+
+    def _build_game_keyboard():
+        open_games = _open_games_for_prediction()
+        if not open_games:
+            return None
+
+        rows = []
+        row = []
+        for game_id in open_games:
+            game = service.game(game_id)
+            label = f"{game_id}: {game.team_a} - {game.team_b}"
+            row.append(InlineKeyboardButton(label, callback_data=f"predict:game:{game_id}"))
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        return InlineKeyboardMarkup(rows)
+
+    def _build_score_keyboard():
+        common_scores = [(0, 0), (1, 0), (0, 1), (1, 1), (2, 1), (2, 0), (1, 2), (0, 2)]
+        rows = []
+        row = []
+        for pred_a, pred_b in common_scores:
+            row.append(InlineKeyboardButton(f"{pred_a}-{pred_b}", callback_data=f"predict:score:{pred_a}:{pred_b}"))
+            if len(row) == 4:
+                rows.append(row)
+                row = []
+        if row:
+            rows.append(row)
+        return InlineKeyboardMarkup(rows)
+
+    def _parse_score(text: str):
+        cleaned = text.strip()
+        for separator in ("-", " ", ":"):
+            if separator in cleaned:
+                parts = cleaned.split(separator, 1)
+                if len(parts) == 2:
+                    return int(parts[0].strip()), int(parts[1].strip())
+        raise ValueError
+
+    def _save_prediction(user_id: int, group_id: int, game_id: int, pred_a: int, pred_b: int) -> str:
+        prediction_input = (user_id, game_id, group_id, pred_a, pred_b, 0)
+        if not service.is_valid_prediction_input(prediction_input):
+            raise ValueError
+
+        game = service.game(game_id)
+        is_open_for_prediction = service.is_prediction_open(game_id)
+        is_new_prediction = service.is_new_prediction(user_id, game_id, group_id)
+
+        if is_open_for_prediction and is_new_prediction:
+            service.add_prediction(prediction_input)
+            return f"پیش‌بینی شما اضافه شد:\n{game_id}: {game.team_a} {pred_a} - {pred_b} {game.team_b}"
+        if not is_open_for_prediction:
+            return "این بازی برای پیش‌بینی در دسترس نیست"
+
+        existing_prediction = service.get_prediction(user_id, game_id, group_id)
+        if existing_prediction and existing_prediction != (pred_a, pred_b):
+            service.update_prediction(prediction_input)
+            return f"پیش‌بینی شما تغییر کرد:\n{game_id}: {game.team_a} {pred_a} - {pred_b} {game.team_b}"
+        return "شما قبلا این بازی را پیش‌بینی کرده‌اید"
+
+    async def _send_prediction_result(update: Update, context: ContextTypes.DEFAULT_TYPE, result_text: str):
+        user = update.effective_user
+        chat_id = update.effective_chat.id
+        await context.bot.send_message(chat_id=chat_id, text=f"@{user.username}\n{result_text}")
+
     @group_user
-    async def predict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if len(context.args) >= 3:
+            user = update.effective_user
+            group_id = update.effective_chat.id
+            try:
+                result_text = _save_prediction(
+                    user.id,
+                    group_id,
+                    int(context.args[0]),
+                    int(context.args[1]),
+                    int(context.args[2]),
+                )
+                await _send_prediction_result(update, context, result_text)
+            except Exception:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="لطفا پیش‌بینی را درست وارد کنید:\n/predict <game_id> <team_a_goals> <team_b_goals>",
+                )
+            return ConversationHandler.END
+
+        keyboard = _build_game_keyboard()
+        if keyboard is None:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="فعلا بازی باز برای پیش‌بینی وجود ندارد.",
+            )
+            return ConversationHandler.END
+
+        context.user_data.pop("predict_game_id", None)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=(
+                "یک بازی را از لیست انتخاب کنید:\n"
+                "یا با فرمت کامل بفرستید:\n"
+                "/predict <game_id> <team_a_goals> <team_b_goals>\n\n"
+                "برای لغو: /cancel"
+            ),
+            reply_markup=keyboard,
+        )
+        return SELECT_GAME
+
+    @group_user
+    async def predict_game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        game_id = int(query.data.rsplit(":", 1)[-1])
+        game = service.game(game_id)
+
+        context.user_data["predict_game_id"] = game_id
+        await query.edit_message_text(
+            text=(
+                f"بازی {game_id}: {game.team_a} - {game.team_b}\n\n"
+                "یک نتیجه را انتخاب کنید یا به صورت ۲-۱ بنویسید:"
+            ),
+            reply_markup=_build_score_keyboard(),
+        )
+        return ENTER_SCORE
+
+    @group_user
+    async def predict_score_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        _, _, pred_a, pred_b = query.data.split(":")
+        game_id = context.user_data.get("predict_game_id")
+        if game_id is None:
+            await query.edit_message_text(text="ابتدا یک بازی انتخاب کنید. دوباره /predict را بزنید.")
+            return ConversationHandler.END
+
         user = update.effective_user
         group_id = update.effective_chat.id
-        response_text = f"@{user.username}"
         try:
-            prediction_input = (
-                user.id,
-                int(context.args[0]),
-                group_id,
-                int(context.args[1]),
-                int(context.args[2]),
-                0,
+            result_text = _save_prediction(user.id, group_id, game_id, int(pred_a), int(pred_b))
+            await query.edit_message_text(text=f"@{user.username}\n{result_text}")
+        except Exception:
+            await query.edit_message_text(text="ثبت پیش‌بینی ناموفق بود. دوباره /predict را بزنید.")
+        context.user_data.pop("predict_game_id", None)
+        return ConversationHandler.END
+
+    @group_user
+    async def predict_enter_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        game_id = context.user_data.get("predict_game_id")
+        if game_id is None:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="ابتدا یک بازی انتخاب کنید. دوباره /predict را بزنید.",
             )
-            if not service.is_valid_prediction_input(prediction_input):
-                raise ValueError
+            return ConversationHandler.END
 
-            game_id = prediction_input[1]
-            game = service.game(game_id)
-            is_open_for_prediction = service.is_prediction_open(game_id)
-            is_new_prediction = service.is_new_prediction(user.id, game_id, group_id)
-
-            if is_open_for_prediction and is_new_prediction:
-                service.add_prediction(prediction_input)
-                response_text += f"\nپیش‌بینی شما اضافه شد:\n{game_id}: {game.team_a} {prediction_input[3]} - {prediction_input[4]} {game.team_b}"
-            elif not is_open_for_prediction:
-                response_text += "\nاین بازی برای پیش‌بینی در دسترس نیست"
-            else:
-                existing_prediction = service.get_prediction(user.id, game_id, group_id)
-                if existing_prediction and existing_prediction != prediction_input[3:]:
-                    service.update_prediction(prediction_input)
-                    response_text += f"\nپیش‌بینی شما تغییر کرد:\n{game_id}: {game.team_a} {prediction_input[3]} - {prediction_input[4]} {game.team_b}"
-                else:
-                    response_text += "\nشما قبلا این بازی را پیش‌بینی کرده‌اید"
-
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
+        user = update.effective_user
+        group_id = update.effective_chat.id
+        try:
+            pred_a, pred_b = _parse_score(update.message.text)
+            result_text = _save_prediction(user.id, group_id, game_id, pred_a, pred_b)
+            await _send_prediction_result(update, context, result_text)
         except Exception:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="لطفا پیش‌بینی را درست وارد کنید:\n/predict <game_id> <team_a_goals> <team_b_goals>",
+                text="فرمت نتیجه درست نیست. مثال: 2-1 یا 2 1",
+                reply_markup=_build_score_keyboard(),
             )
+            return ENTER_SCORE
+
+        context.user_data.pop("predict_game_id", None)
+        return ConversationHandler.END
+
+    @group_user
+    async def predict_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data.pop("predict_game_id", None)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="ثبت پیش‌بینی لغو شد.")
+        return ConversationHandler.END
+
+    predict_conversation = ConversationHandler(
+        entry_points=[CommandHandler("predict", predict_start)],
+        states={
+            SELECT_GAME: [
+                CallbackQueryHandler(predict_game_selected, pattern=r"^predict:game:\d+$"),
+            ],
+            ENTER_SCORE: [
+                CallbackQueryHandler(predict_score_selected, pattern=r"^predict:score:\d+:\d+$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", predict_cancel)],
+    )
 
     @group_user
     async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -210,7 +378,7 @@ def build_user_handlers(service, is_open_signup):
 
     return {
         "start": start_command,
-        "predict": predict_command,
+        "predict_conversation": predict_conversation,
         "games": games_command,
         "rank": rank_command,
         "my_stats": my_stats_command,

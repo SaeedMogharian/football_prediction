@@ -31,11 +31,15 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
         cursor.executescript(file.read())
     connection.commit()
 
-
+#
+# General Helper
+#
 def _is_group_chat(chat) -> bool:
     return chat is not None and chat.type in ("group", "supergroup")
 
-
+#
+# Decorators
+#
 def super_admin(func):
     @wraps(func)
     async def wrapped(update, context, *args, **kwargs):
