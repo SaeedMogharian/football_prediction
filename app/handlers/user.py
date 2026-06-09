@@ -14,7 +14,7 @@ def build_user_handlers(service, is_open_signup):
         return user.first_name or str(user.id)
 
     def _predict_header(user) -> str:
-        return f"پیش‌بینی‌کننده: {_predict_user_label(user)}"
+        return f"{_predict_user_label(user)}"
 
     async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat = update.effective_chat
