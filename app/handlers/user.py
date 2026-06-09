@@ -391,17 +391,28 @@ def build_user_handlers(service, is_open_signup):
         await context.bot.send_message(chat_id=update.effective_chat.id, text="ثبت پیش‌بینی لغو شد.")
         return ConversationHandler.END
 
+    @group_user
+    async def predict_already_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="شما یک گفت‌وگوی پیش‌بینی فعال دارید. لطفا ابتدا آن را کامل کنید یا /cancel بزنید، سپس دوباره /predict را اجرا کنید.",
+        )
+        return None
+
     predict_conversation = ConversationHandler(
         entry_points=[CommandHandler("predict", predict_start)],
         states={
             SELECT_GAME: [
+                CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_game_selected, pattern=r"^predict:game:\d+$"),
             ],
             ENTER_SCORE_A: [
+                CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_score_a_selected, pattern=r"^predict:scorea:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_a),
             ],
             ENTER_SCORE_B: [
+                CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_score_b_selected, pattern=r"^predict:scoreb:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_b),
             ],
