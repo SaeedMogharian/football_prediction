@@ -94,6 +94,8 @@ Telegram bot for match prediction in a friend group.
   ```
 
 ## Scheduling Settings
+- `timezone`: IANA timezone used for interpreting game `played_at` values and reminder/close checks.
+  - Example: `Asia/Tehran`, `UTC`, `Europe/Berlin`
 - `prediction_close_minutes`: closes predictions this many minutes before kickoff.
   - Example: `0` closes exactly at kickoff.
   - Example: `10` closes 10 minutes before kickoff.

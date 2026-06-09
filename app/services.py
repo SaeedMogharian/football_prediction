@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 
 @dataclass
@@ -14,10 +15,15 @@ class Game:
 
 
 class Service:
-    def __init__(self, cursor, connection, prediction_close_minutes: int = 0):
+    def __init__(self, cursor, connection, prediction_close_minutes: int = 0, timezone_name: str = "UTC"):
         self.cursor = cursor
         self.connection = connection
         self.prediction_close_minutes = prediction_close_minutes
+        self.timezone_name = timezone_name
+        try:
+            self.timezone = ZoneInfo(timezone_name)
+        except Exception:
+            self.timezone = ZoneInfo("Asia/Tehran")
         self._teams_cache: set[str] | None = None
         self._games_cache: dict[int, Game] | None = None
         self._users_cache: dict[int, tuple[str, int]] | None = None
@@ -261,15 +267,23 @@ class Service:
         game = self.game(game_id)
         if game.is_played:
             return False
-        if not game.played_at:
+        played_at_dt = self.get_game_played_at_datetime(game)
+        if played_at_dt is None:
             return True
+        now = datetime.now(self.timezone)
+        close_at = played_at_dt - timedelta(minutes=self.prediction_close_minutes)
+        return now < close_at
+
+    def get_game_played_at_datetime(self, game: Game) -> datetime | None:
+        if not game.played_at:
+            return None
         try:
             played_at_dt = datetime.fromisoformat(game.played_at)
         except Exception:
-            return True
-        now = datetime.now()
-        close_at = played_at_dt - timedelta(minutes=self.prediction_close_minutes)
-        return now < close_at
+            return None
+        if played_at_dt.tzinfo is None:
+            return played_at_dt.replace(tzinfo=self.timezone)
+        return played_at_dt.astimezone(self.timezone)
 
     def list_verified_group_ids(self) -> list[int]:
         self._load_groups_cache()

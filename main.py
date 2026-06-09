@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 
 from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
@@ -22,6 +21,7 @@ def main():
     is_open_signup = settings["is_open"]
     prediction_close_minutes = int(settings.get("prediction_close_minutes", 0))
     reminder_offsets_minutes = settings.get("reminder_offsets_minutes", [10, 1])
+    timezone_name = settings.get("timezone", "UTC")
     if not isinstance(reminder_offsets_minutes, list):
         reminder_offsets_minutes = [10, 1]
     reminder_offsets_minutes = [int(item) for item in reminder_offsets_minutes]
@@ -30,7 +30,12 @@ def main():
     cursor = connection.cursor()
 
     init_db(cursor, connection, "schema.sql")
-    service = Service(cursor, connection, prediction_close_minutes=prediction_close_minutes)
+    service = Service(
+        cursor,
+        connection,
+        prediction_close_minutes=prediction_close_minutes,
+        timezone_name=timezone_name,
+    )
 
     handlers = build_handlers(service, admin_ids, is_open_signup)
 
@@ -56,14 +61,13 @@ def main():
     async def send_scheduled_reminders(context):
         service_obj: Service = context.application.bot_data["service"]
         offsets = context.application.bot_data.get("reminder_offsets_minutes", [10, 1])
-        now = datetime.now()
+        now = datetime.now(service_obj.timezone)
 
         for game in service_obj.games_with_datetime():
             if game.is_played:
                 continue
-            try:
-                played_at = datetime.fromisoformat(game.played_at)
-            except Exception:
+            played_at = service_obj.get_game_played_at_datetime(game)
+            if played_at is None:
                 continue
 
             delta_seconds = (played_at - now).total_seconds()
