@@ -53,8 +53,8 @@ def build_user_handlers(service, is_open_signup):
                 return
 
         text = f"سلام {user.first_name}\nبه بات پیش‌بینی خوش اومدی!"
+        text += "\nیا لیست بازی‌ها رو از /games ببین"
         text += "\nبرای پیش‌بینی، دستور /predict را بزن و بازی و نتیجه را انتخاب کن."
-        text += "\nیا لیست بازی‌ها رو از /games ببین و اینطوری پیش‌بینی رو ثبت کن:\n/predict <game_id> <team_a_goals> <team_b_goals>"
         await context.bot.send_message(chat_id=chat.id, text=text)
 
     @group_user
@@ -68,7 +68,7 @@ def build_user_handlers(service, is_open_signup):
         try:
             visible_count = int(context.args[0])
         except Exception:
-            visible_count = 10
+            visible_count = 12
 
         current_game_id = service.current_game()
         start_game_id = max(current_game_id - visible_count // 4, 1)
@@ -235,9 +235,7 @@ def build_user_handlers(service, is_open_signup):
             chat_id=update.effective_chat.id,
             text=(
                 f"{_predict_header(user)}\n"
-                "مرحله ۱ از ۳: یک بازی را از لیست انتخاب کنید.\n\n"
-                "یا با فرمت کامل بفرستید:\n"
-                "/predict <game_id> <team_a_goals> <team_b_goals>\n\n"
+                " یک بازی را از لیست انتخاب کنید\n\n"
                 "برای لغو: /cancel"
             ),
             reply_markup=keyboard,
@@ -256,9 +254,9 @@ def build_user_handlers(service, is_open_signup):
         context.user_data.pop("predict_score_a", None)
         await query.edit_message_text(
             text=(
-                f"{_predict_header(user)}\n"
-                f"بازی {game_id}: {game.team_a} - {game.team_b}\n\n"
-                f"مرحله ۲ از ۳: گل‌های {game.team_a} را انتخاب کنید (۰ تا ۵)\n"
+                f"{_predict_header(user)}\n\n"
+                f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
+                f" گل‌های {game.team_a} را انتخاب کنید)\n"
                 "یا عدد دلخواه بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scorea"),
@@ -280,9 +278,9 @@ def build_user_handlers(service, is_open_signup):
         user = update.effective_user
         await query.edit_message_text(
             text=(
-                f"{_predict_header(user)}\n"
-                f"بازی {game_id}: {game.team_a} - {game.team_b}\n\n"
-                f"مرحله ۳ از ۳: گل‌های {game.team_b} را انتخاب کنید (۰ تا ۵)\n"
+                f"{_predict_header(user)}\n\n"
+                f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
+                f"گل‌های {game.team_b} را انتخاب کنید)\n"
                 "یا عدد دلخواه بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scoreb"),
@@ -309,7 +307,7 @@ def build_user_handlers(service, is_open_signup):
                 chat_id=update.effective_chat.id,
                 text=(
                     f"{_predict_header(user)}\n"
-                    f"مرحله ۲ از ۳: گل‌های {game.team_a} را درست وارد کنید.\n"
+                    f"گل‌های {game.team_a} را درست وارد کنید.\n"
                     "مثال: 0 یا 2"
                 ),
                 reply_markup=_build_single_score_keyboard("scorea"),
@@ -321,9 +319,9 @@ def build_user_handlers(service, is_open_signup):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=(
-                f"{_predict_header(user)}\n"
-                f"بازی {game_id}: {game.team_a} - {game.team_b}\n\n"
-                f"مرحله ۳ از ۳: گل‌های {game.team_b} را انتخاب کنید (۰ تا ۵)\n"
+                f"{_predict_header(user)}\n\n"
+                f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
+                f"گل‌های {game.team_b} را انتخاب کنید)\n"
                 "یا عدد دلخواه بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scoreb"),
@@ -375,7 +373,7 @@ def build_user_handlers(service, is_open_signup):
                 chat_id=update.effective_chat.id,
                 text=(
                     f"{_predict_header(user)}\n"
-                    f"مرحله ۳ از ۳: گل‌های {game.team_b} را درست وارد کنید.\n"
+                    f"گل‌های {game.team_b} را درست وارد کنید.\n"
                     "مثال: 0 یا 2"
                 ),
                 reply_markup=_build_single_score_keyboard("scoreb"),
