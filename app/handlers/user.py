@@ -53,7 +53,7 @@ def build_user_handlers(service, is_open_signup):
                 return
 
         text = f"سلام {user.first_name}\nبه بات پیش‌بینی خوش اومدی!"
-        text += "\nیا لیست بازی‌ها رو از /games ببین"
+        text += "\ لیست بازی‌ها رو از /games ببین."
         text += "\nبرای پیش‌بینی، دستور /predict را بزن و بازی و نتیجه را انتخاب کن."
         await context.bot.send_message(chat_id=chat.id, text=text)
 
