@@ -289,7 +289,7 @@ class Service:
         return [game for game in self._games_cache.values() if game.played_at]
 
     def is_valid_prediction_input(self, prediction_input):
-        return self.game_exists(prediction_input[1]) and prediction_input[2] >= 0 and prediction_input[3] >= 0
+        return self.game_exists(prediction_input[1]) and prediction_input[3] >= 0 and prediction_input[4] >= 0
 
     def add_prediction(self, prediction):
         self.cursor.execute(
