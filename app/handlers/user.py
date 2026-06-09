@@ -230,16 +230,19 @@ def build_user_handlers(service, is_open_signup):
 
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
         user = update.effective_user
-        await context.bot.send_message(
+        sent = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=(
                 f"{_predict_header(user)}\n"
-                " یک بازی را از لیست انتخاب کنید\n\n"
+                " یک بازی را از لیست انتخاب کنید\n"
+                "برای ورود دستی عدد، به پیام مرحله ریپلای کنید.\n\n"
                 "برای لغو: /cancel"
             ),
             reply_markup=keyboard,
         )
+        context.user_data["predict_input_message_id"] = sent.message_id
         return SELECT_GAME
 
     @group_user
@@ -257,10 +260,11 @@ def build_user_handlers(service, is_open_signup):
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
                 f" گل‌های {game.team_a} را انتخاب کنید)\n"
-                "یا عدد دلخواه بفرستید:"
+                "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scorea"),
         )
+        context.user_data["predict_input_message_id"] = query.message.message_id
         return ENTER_SCORE_A
 
     @group_user
@@ -281,10 +285,11 @@ def build_user_handlers(service, is_open_signup):
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
                 f"گل‌های {game.team_b} را انتخاب کنید)\n"
-                "یا عدد دلخواه بفرستید:"
+                "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scoreb"),
         )
+        context.user_data["predict_input_message_id"] = query.message.message_id
         return ENTER_SCORE_B
 
     @group_user
@@ -297,35 +302,43 @@ def build_user_handlers(service, is_open_signup):
             )
             return ConversationHandler.END
 
+        input_message_id = context.user_data.get("predict_input_message_id")
+        reply_to = update.message.reply_to_message if update.message else None
+        if input_message_id is None or reply_to is None or reply_to.message_id != input_message_id:
+            return ENTER_SCORE_A
+
         try:
             pred_a = _parse_single_score(update.message.text)
             context.user_data["predict_score_a"] = pred_a
         except Exception:
             game = service.game(game_id)
             user = update.effective_user
-            await context.bot.send_message(
+            sent = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=(
                     f"{_predict_header(user)}\n"
                     f"گل‌های {game.team_a} را درست وارد کنید.\n"
-                    "مثال: 0 یا 2"
+                    "مثال: 0 یا 2\n"
+                    "عدد را با ریپلای به پیام بفرستید."
                 ),
                 reply_markup=_build_single_score_keyboard("scorea"),
             )
+            context.user_data["predict_input_message_id"] = sent.message_id
             return ENTER_SCORE_A
 
         game = service.game(game_id)
         user = update.effective_user
-        await context.bot.send_message(
+        sent = await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=(
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
                 f"گل‌های {game.team_b} را انتخاب کنید)\n"
-                "یا عدد دلخواه بفرستید:"
+                "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scoreb"),
         )
+        context.user_data["predict_input_message_id"] = sent.message_id
         return ENTER_SCORE_B
 
     @group_user
@@ -348,6 +361,7 @@ def build_user_handlers(service, is_open_signup):
             await query.edit_message_text(text="ثبت پیش‌بینی ناموفق بود. دوباره /predict را بزنید.")
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
         return ConversationHandler.END
 
     @group_user
@@ -361,6 +375,11 @@ def build_user_handlers(service, is_open_signup):
             )
             return ConversationHandler.END
 
+        input_message_id = context.user_data.get("predict_input_message_id")
+        reply_to = update.message.reply_to_message if update.message else None
+        if input_message_id is None or reply_to is None or reply_to.message_id != input_message_id:
+            return ENTER_SCORE_B
+
         user = update.effective_user
         group_id = update.effective_chat.id
         try:
@@ -369,25 +388,29 @@ def build_user_handlers(service, is_open_signup):
             await _send_prediction_result(update, context, result_text)
         except Exception:
             game = service.game(game_id)
-            await context.bot.send_message(
+            sent = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=(
                     f"{_predict_header(user)}\n"
                     f"گل‌های {game.team_b} را درست وارد کنید.\n"
-                    "مثال: 0 یا 2"
+                    "مثال: 0 یا 2\n"
+                    "عدد را با ریپلای به پیام مرحله بفرستید."
                 ),
                 reply_markup=_build_single_score_keyboard("scoreb"),
             )
+            context.user_data["predict_input_message_id"] = sent.message_id
             return ENTER_SCORE_B
 
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
         return ConversationHandler.END
 
     @group_user
     async def predict_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
         await context.bot.send_message(chat_id=update.effective_chat.id, text="ثبت پیش‌بینی لغو شد.")
         return ConversationHandler.END
 
