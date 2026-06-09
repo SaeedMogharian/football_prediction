@@ -102,6 +102,7 @@ Telegram bot for match prediction in a friend group.
   - Example: `-5` closes 5 minutes after kickoff.
 - `reminder_offsets_minutes`: list of reminder offsets (in minutes before kickoff), sent to verified groups.
   - Example: `[10, 1]` sends reminders 10 and 1 minutes before game time.
+- Score recalculation is also scheduled automatically at +45 and +90 minutes from each game's kickoff time.
 
 ### Group Verification Flow
 - Group admin runs `/request_group_verification` inside the group.

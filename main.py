@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
@@ -57,6 +58,7 @@ def main():
     application.bot_data["service"] = service
     application.bot_data["admin_ids"] = admin_ids
     application.bot_data["reminder_offsets_minutes"] = reminder_offsets_minutes
+    application.bot_data["scheduled_recalc_markers"] = set()
 
     async def send_scheduled_reminders(context):
         service_obj: Service = context.application.bot_data["service"]
@@ -86,8 +88,39 @@ def main():
                         await context.bot.send_message(chat_id=group_id, text=message)
                     break
 
-    if application.job_queue is not None:
-        application.job_queue.run_repeating(send_scheduled_reminders, interval=150, first=15, name="scheduled_game_reminders")
+    async def run_scheduled_recalc_scores(context):
+        service_obj: Service = context.application.bot_data["service"]
+        now = datetime.now(service_obj.timezone)
+        markers: set[str] = context.application.bot_data.setdefault("scheduled_recalc_markers", set())
+        trigger_minutes = (45, 90)
+        trigger_window_seconds = 5 * 60
+
+        for game in service_obj.games_with_datetime():
+            played_at = service_obj.get_game_played_at_datetime(game)
+            if played_at is None:
+                continue
+            elapsed_seconds = (now - played_at).total_seconds()
+            if elapsed_seconds < 0:
+                continue
+
+            for minute in trigger_minutes:
+                marker = f"{game.id}:{played_at.isoformat()}:{minute}"
+                if marker in markers:
+                    continue
+                target_seconds = minute * 60
+                if abs(elapsed_seconds - target_seconds) <= trigger_window_seconds:
+                    service_obj.calculate_user_scores()
+                    markers.add(marker)
+                    logging.info("Scheduled recalc_scores executed for game %s at +%s minutes", game.id, minute)
+
+    job_queue = getattr(application, "_job_queue", None)
+    if job_queue is not None:
+        job_queue.run_repeating(send_scheduled_reminders, interval=150, first=15, name="scheduled_game_reminders")
+        job_queue.run_repeating(run_scheduled_recalc_scores, interval=300, first=20, name="scheduled_recalc_scores")
+    else:
+        logging.warning(
+            "JobQueue is unavailable. Install with: pip install \"python-telegram-bot[job-queue]\""
+        )
 
     application.add_handler(CommandHandler("start", handlers["start"]))
     application.add_handler(handlers["predict_conversation"])

@@ -21,7 +21,7 @@ def build_group_admin_handlers(service):
                 return
 
         service.register_group_request(chat.id, chat.title or "", user.id)
-        await context.bot.send_message(chat_id=chat.id, text="درخواست تایید گروه ثبت شد. لطفا ادمین سراسری تایید کند.")
+        await context.bot.send_message(chat_id=chat.id, text="درخواست باید به تایید ادمین برسد. لطفا صبر کنید.")
 
     @group_admin
     async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
