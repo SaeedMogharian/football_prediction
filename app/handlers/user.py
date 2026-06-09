@@ -54,7 +54,7 @@ def build_user_handlers(service, is_open_signup):
 
         text = f"سلام {user.first_name}\nبه بات پیش‌بینی خوش اومدی!"
         text += "\nبرای پیش‌بینی، دستور /predict را بزن و بازی و نتیجه را انتخاب کن."
-        text += "\nیا مستقیم: /predict <game_id> <team_a_goals> <team_b_goals>"
+        text += "\nیا مستقیم:\n/predict <game_id> <team_a_goals> <team_b_goals>"
         await context.bot.send_message(chat_id=chat.id, text=text)
 
     @group_user
@@ -68,7 +68,7 @@ def build_user_handlers(service, is_open_signup):
         try:
             visible_count = int(context.args[0])
         except Exception:
-            visible_count = 6
+            visible_count = 10
 
         current_game_id = service.current_game()
         start_game_id = max(current_game_id - visible_count // 4, 1)
@@ -94,7 +94,7 @@ def build_user_handlers(service, is_open_signup):
                 date_label = "Date Unknown:"
                 time_label = "--:--"
 
-            game_line = f"{game_id} | {time_label}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
+            game_line = f"{game_id}: {game.team_a} {goals_a} -  {time_label} - {goals_b} {game.team_b}"
             grouped_lines.setdefault(date_label, []).append(game_line)
 
         for date_label, lines in grouped_lines.items():
