@@ -484,21 +484,21 @@ def build_user_handlers(service, is_open_signup):
             return
 
         game = service.game(game_id)
-        if not game.is_played:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"بازی شماره {game_id} هنوز برگزار نشده است!")
-            return
+        if game.is_played:
+            try:
+                service.fetch_result(game_id)
+                game = service.game(game_id)
+            except Exception:
+                pass
 
-        try:
-            service.fetch_result(game_id)
-            game = service.game(game_id)
-        except Exception:
-            pass
-
-        text = f"تمام پیش‌بینی‌ها برای بازی {game_id}: {game.team_a} {game.goals_a} - {game.goals_b} {game.team_b}"
+        goals_a = game.goals_a if game.is_played else "TBD"
+        goals_b = game.goals_b if game.is_played else "TBD"
+        text = f"تمام پیش‌بینی‌ها برای بازی {game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
         rows = service.get_predictions_for_game(game_id, group_id)
         sorted_rows = sorted([[row[4], row[1], row[2], row[3]] for row in rows], reverse=True)
         for row in sorted_rows:
-            text += f"\n{row[1]}: {row[2]} - {row[3]}: {row[0]}"
+            score_text = row[0] if game.is_played else "np"
+            text += f"\n{row[1]}: {row[2]} - {row[3]}: {score_text}"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     return {
