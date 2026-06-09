@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from datetime import datetime
 
 from app.core import group_user
 
@@ -67,20 +68,39 @@ def build_user_handlers(service, is_open_signup):
         try:
             visible_count = int(context.args[0])
         except Exception:
-            visible_count = 12
+            visible_count = 6
 
         current_game_id = service.current_game()
         start_game_id = max(current_game_id - visible_count // 4, 1)
         start_game_id = min(max(len(game_ids) - visible_count + 1, 1), start_game_id)
         end_game_id = min(start_game_id + visible_count, len(game_ids) + 1)
 
+        grouped_lines: dict[str, list[str]] = {}
         for game_id in range(start_game_id, end_game_id):
             if not service.game_exists(game_id):
                 continue
             game = service.game(game_id)
             goals_a = game.goals_a if game.is_played else "TBD"
             goals_b = game.goals_b if game.is_played else "TBD"
-            response_text += f"{game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}\n"
+            if game.played_at:
+                try:
+                    played_at_dt = datetime.fromisoformat(game.played_at)
+                    date_label = played_at_dt.strftime("%B %d:")
+                    time_label = played_at_dt.strftime("%H:%M")
+                except Exception:
+                    date_label = "Date Unknown:"
+                    time_label = "--:--"
+            else:
+                date_label = "Date Unknown:"
+                time_label = "--:--"
+
+            game_line = f"{game_id} | {time_label}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
+            grouped_lines.setdefault(date_label, []).append(game_line)
+
+        for date_label, lines in grouped_lines.items():
+            response_text += f"\n{date_label}\n"
+            for line in lines:
+                response_text += f"{line}\n"
 
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text)
 

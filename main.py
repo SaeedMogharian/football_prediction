@@ -72,7 +72,7 @@ def main():
 
             for offset in offsets:
                 target_seconds = int(offset) * 60
-                if abs(delta_seconds - target_seconds) <= 30:
+                if abs(delta_seconds - target_seconds) <= 150:
                     text = f"یادآوری: بازی شماره {game.id} تا {int(offset)} دقیقه دیگر شروع می‌شود.\nپیش‌بینی‌هاتون رو ثبت کنید:"
                     for group_id in service_obj.list_verified_group_ids():
                         pending_usernames = service_obj.get_pending_prediction_usernames(game.id, group_id)
@@ -83,7 +83,7 @@ def main():
                     break
 
     if application.job_queue is not None:
-        application.job_queue.run_repeating(send_scheduled_reminders, interval=30, first=15, name="scheduled_game_reminders")
+        application.job_queue.run_repeating(send_scheduled_reminders, interval=150, first=15, name="scheduled_game_reminders")
 
     application.add_handler(CommandHandler("start", handlers["start"]))
     application.add_handler(handlers["predict_conversation"])
