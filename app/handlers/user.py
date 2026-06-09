@@ -493,7 +493,7 @@ def build_user_handlers(service, is_open_signup):
 
         goals_a = game.goals_a if game.is_played else "TBD"
         goals_b = game.goals_b if game.is_played else "TBD"
-        text = f"تمام پیش‌بینی‌ها برای بازی {game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
+        text = f"تمام پیش‌بینی‌ها برای بازی {game_id}:\n{game.team_a} {goals_a} - {goals_b} {game.team_b}:\n"
         rows = service.get_predictions_for_game(game_id, group_id)
         sorted_rows = sorted([[row[4], row[1], row[2], row[3]] for row in rows], reverse=True)
         for row in sorted_rows:
