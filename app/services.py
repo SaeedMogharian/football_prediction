@@ -277,10 +277,29 @@ class Service:
     def get_game_played_at_datetime(self, game: Game) -> datetime | None:
         if not game.played_at:
             return None
-        try:
-            played_at_dt = datetime.fromisoformat(game.played_at)
-        except Exception:
+        raw_value = str(game.played_at).strip()
+        if not raw_value:
             return None
+
+        normalized = raw_value.replace("Z", "+00:00")
+        try:
+            played_at_dt = datetime.fromisoformat(normalized)
+        except Exception:
+            fallback_formats = (
+                "%Y-%m-%d %H:%M",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%dT%H:%M",
+                "%Y-%m-%dT%H:%M:%S",
+            )
+            played_at_dt = None
+            for dt_format in fallback_formats:
+                try:
+                    played_at_dt = datetime.strptime(raw_value, dt_format)
+                    break
+                except Exception:
+                    continue
+            if played_at_dt is None:
+                return None
         if played_at_dt.tzinfo is None:
             return played_at_dt.replace(tzinfo=self.timezone)
         return played_at_dt.astimezone(self.timezone)

@@ -64,16 +64,30 @@ def main():
         service_obj: Service = context.application.bot_data["service"]
         offsets = context.application.bot_data.get("reminder_offsets_minutes", [10, 1])
         now = datetime.now(service_obj.timezone)
+        logging.info(
+            "scheduled_game_reminders tick timezone=%s now=%s offsets=%s",
+            service_obj.timezone_name,
+            now.isoformat(),
+            offsets,
+        )
 
         for game in service_obj.games_with_datetime():
             if game.is_played:
+                logging.debug("reminder skip game=%s reason=is_played", game.id)
                 continue
             played_at = service_obj.get_game_played_at_datetime(game)
             if played_at is None:
+                logging.warning("reminder skip game=%s reason=invalid_played_at value=%r", game.id, game.played_at)
                 continue
 
             delta_seconds = (played_at - now).total_seconds()
             if delta_seconds < -60:
+                logging.debug(
+                    "reminder skip game=%s reason=already_started played_at=%s delta_seconds=%.1f",
+                    game.id,
+                    played_at.isoformat(),
+                    delta_seconds,
+                )
                 continue
 
             for offset in offsets:
@@ -86,6 +100,13 @@ def main():
                             continue
                         message = text + "".join(f"\n@{username}" for username in pending_usernames)
                         await context.bot.send_message(chat_id=group_id, text=message)
+                        logging.info(
+                            "reminder sent game=%s group=%s offset=%s pending=%s",
+                            game.id,
+                            group_id,
+                            int(offset),
+                            len(pending_usernames),
+                        )
                     break
 
     async def run_scheduled_recalc_scores(context):
@@ -94,13 +115,26 @@ def main():
         markers: set[str] = context.application.bot_data.setdefault("scheduled_recalc_markers", set())
         trigger_minutes = (45, 90)
         trigger_window_seconds = 5 * 60
+        logging.info(
+            "scheduled_recalc_scores tick timezone=%s now=%s markers=%s",
+            service_obj.timezone_name,
+            now.isoformat(),
+            len(markers),
+        )
 
         for game in service_obj.games_with_datetime():
             played_at = service_obj.get_game_played_at_datetime(game)
             if played_at is None:
+                logging.warning("recalc skip game=%s reason=invalid_played_at value=%r", game.id, game.played_at)
                 continue
             elapsed_seconds = (now - played_at).total_seconds()
             if elapsed_seconds < 0:
+                logging.debug(
+                    "recalc skip game=%s reason=not_started played_at=%s elapsed=%.1f",
+                    game.id,
+                    played_at.isoformat(),
+                    elapsed_seconds,
+                )
                 continue
 
             for minute in trigger_minutes:
