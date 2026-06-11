@@ -109,15 +109,12 @@ def build_user_handlers(service, is_open_signup):
         if not game_ids:
             return []
 
-        current_game_id = service.current_game()
-        start_game_id = max(current_game_id - visible_count // 4, 1)
-        start_game_id = min(max(len(game_ids) - visible_count + 1, 1), start_game_id)
-        end_game_id = min(start_game_id + visible_count, len(game_ids) + 1)
-
         open_games = []
-        for game_id in range(start_game_id, end_game_id):
-            if service.game_exists(game_id) and service.is_prediction_open(game_id):
+        for game_id in game_ids:
+            if service.is_prediction_open(game_id):
                 open_games.append(game_id)
+            if len(open_games) >= visible_count:
+                break
         return open_games
 
     def _build_game_keyboard():
