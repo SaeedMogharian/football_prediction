@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
@@ -70,36 +70,53 @@ def main():
             now.isoformat(),
             offsets,
         )
+        scanned_games = 0
+        matched_window_games = 0
+        sent_messages = 0
+        skipped_is_played = 0
+        skipped_invalid_time = 0
+        skipped_started = 0
+        skipped_no_window = 0
+        skipped_no_verified_groups = 0
+        skipped_no_pending_users = 0
 
         for game in service_obj.games_with_datetime():
+            scanned_games += 1
             if game.is_played:
-                logging.debug("reminder skip game=%s reason=is_played", game.id)
+                skipped_is_played += 1
                 continue
             played_at = service_obj.get_game_played_at_datetime(game)
             if played_at is None:
+                skipped_invalid_time += 1
                 logging.warning("reminder skip game=%s reason=invalid_played_at value=%r", game.id, game.played_at)
                 continue
 
             delta_seconds = (played_at - now).total_seconds()
             if delta_seconds < -60:
-                logging.debug(
-                    "reminder skip game=%s reason=already_started played_at=%s delta_seconds=%.1f",
-                    game.id,
-                    played_at.isoformat(),
-                    delta_seconds,
-                )
+                skipped_started += 1
                 continue
 
+            matched_any_offset = False
             for offset in offsets:
                 target_seconds = int(offset) * 60
                 if abs(delta_seconds - target_seconds) <= 150:
+                    matched_any_offset = True
+                    matched_window_games += 1
                     text = f"یادآوری: بازی شماره {game.id} تا {int(offset)} دقیقه دیگر شروع می‌شود.\nپیش‌بینی‌هاتون رو ثبت کنید:"
-                    for group_id in service_obj.list_verified_group_ids():
+                    verified_group_ids = service_obj.list_verified_group_ids()
+                    if not verified_group_ids:
+                        skipped_no_verified_groups += 1
+                        logging.info("reminder window match game=%s offset=%s but no verified groups", game.id, int(offset))
+                        break
+                    game_had_pending_users = False
+                    for group_id in verified_group_ids:
                         pending_usernames = service_obj.get_pending_prediction_usernames(game.id, group_id)
                         if not pending_usernames:
                             continue
+                        game_had_pending_users = True
                         message = text + "".join(f"\n@{username}" for username in pending_usernames)
                         await context.bot.send_message(chat_id=group_id, text=message)
+                        sent_messages += 1
                         logging.info(
                             "reminder sent game=%s group=%s offset=%s pending=%s",
                             game.id,
@@ -107,7 +124,31 @@ def main():
                             int(offset),
                             len(pending_usernames),
                         )
+                    if not game_had_pending_users:
+                        skipped_no_pending_users += 1
+                        logging.info(
+                            "reminder window match game=%s offset=%s but no pending users in verified groups",
+                            game.id,
+                            int(offset),
+                        )
                     break
+            if not matched_any_offset:
+                skipped_no_window += 1
+
+        logging.info(
+            "scheduled_game_reminders summary scanned=%s matched_window=%s sent=%s "
+            "skip_is_played=%s skip_invalid_time=%s skip_started=%s skip_no_window=%s "
+            "skip_no_verified_groups=%s skip_no_pending_users=%s",
+            scanned_games,
+            matched_window_games,
+            sent_messages,
+            skipped_is_played,
+            skipped_invalid_time,
+            skipped_started,
+            skipped_no_window,
+            skipped_no_verified_groups,
+            skipped_no_pending_users,
+        )
 
     async def run_scheduled_recalc_scores(context):
         service_obj: Service = context.application.bot_data["service"]
@@ -147,10 +188,33 @@ def main():
                     markers.add(marker)
                     logging.info("Scheduled recalc_scores executed for game %s at +%s minutes", game.id, minute)
 
+    async def run_scheduled_close_predictions(context):
+        service_obj: Service = context.application.bot_data["service"]
+        now = datetime.now(service_obj.timezone)
+
+        for game in service_obj.games_with_datetime():
+            if game.is_played:
+                continue
+
+            played_at = service_obj.get_game_played_at_datetime(game)
+            if played_at is None:
+                continue
+
+            close_at = played_at - timedelta(minutes=service_obj.prediction_close_minutes)
+            if now >= close_at:
+                service_obj.set_game(game.id, game.goals_a, game.goals_b, 1)
+                logging.info(
+                    "Scheduled close_predictions executed for game %s at now=%s close_at=%s",
+                    game.id,
+                    now.isoformat(),
+                    close_at.isoformat(),
+                )
+
     job_queue = getattr(application, "_job_queue", None)
     if job_queue is not None:
         job_queue.run_repeating(send_scheduled_reminders, interval=150, first=15, name="scheduled_game_reminders")
         job_queue.run_repeating(run_scheduled_recalc_scores, interval=300, first=20, name="scheduled_recalc_scores")
+        job_queue.run_repeating(run_scheduled_close_predictions, interval=60, first=10, name="scheduled_close_predictions")
     else:
         logging.warning(
             "JobQueue is unavailable. Install with: pip install \"python-telegram-bot[job-queue]\""
