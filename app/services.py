@@ -334,6 +334,7 @@ class Service:
 
         for page in range(10):
             page_url = self._build_fotmob_page_url(self.fotmob_fixtures_url, page)
+            logger.info("FotMob query game=%s page=%s url=%s", game_id, page, page_url)
             try:
                 source = requests.get(page_url, headers={"accept-language": "en-US,en;q=0.9"}, timeout=15).text
             except Exception as error:

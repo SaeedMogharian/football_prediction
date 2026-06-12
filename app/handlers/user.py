@@ -1,10 +1,12 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
 from datetime import datetime
+import logging
 
 from app.core import group_user
 
 SELECT_GAME, ENTER_SCORE_A, ENTER_SCORE_B = range(3)
+logger = logging.getLogger(__name__)
 
 
 def build_user_handlers(service, is_open_signup):
@@ -506,6 +508,7 @@ def build_user_handlers(service, is_open_signup):
     @group_user
     async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_id = update.effective_chat.id
+        user = update.effective_user
 
         try:
             requested_game_id = int(context.args[0])
@@ -518,12 +521,19 @@ def build_user_handlers(service, is_open_signup):
             return
 
         game = service.game(game_id)
-        if game.is_played:
-            try:
-                service.fetch_result(game_id)
-                game = service.game(game_id)
-            except Exception:
-                pass
+        logger.info(
+            "results_command start user_id=%s chat_id=%s game_id=%s game_is_played=%s",
+            user.id if user else None,
+            group_id,
+            game_id,
+            bool(game.is_played),
+        )
+        try:
+            fetched = service.fetch_result(game_id)
+            logger.info("results_command fetch_result game_id=%s fetched=%s", game_id, bool(fetched))
+            game = service.game(game_id)
+        except Exception as error:
+            logger.exception("results_command fetch_result failed game_id=%s error=%s", game_id, error)
 
         goals_a = game.goals_a if game.is_played else "TBD"
         goals_b = game.goals_b if game.is_played else "TBD"
