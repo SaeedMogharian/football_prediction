@@ -350,6 +350,9 @@ class Service:
         import requests
 
         game = self.game(game_id)
+        if not game.is_played:
+            logger.info("event=fotmob_fetch_skipped_not_played game_id=%s", game_id)
+            return False
         current_game_id = self.current_game()
         if game_id < current_game_id:
             logger.info(
