@@ -353,6 +353,18 @@ class Service:
         if not game.is_played:
             logger.info("event=fotmob_fetch_skipped_not_played game_id=%s", game_id)
             return False
+        played_at_dt = self.get_game_played_at_datetime(game)
+        if played_at_dt is None:
+            logger.info("event=fotmob_fetch_skipped_no_played_at game_id=%s", game_id)
+            return False
+        elapsed_minutes = (datetime.now(self.timezone) - played_at_dt).total_seconds() / 60
+        if elapsed_minutes < 0 or elapsed_minutes > 150:
+            logger.info(
+                "event=fotmob_fetch_skipped_outside_window game_id=%s elapsed_minutes=%.1f",
+                game_id,
+                elapsed_minutes,
+            )
+            return False
         current_game_id = self.current_game()
         if game_id < current_game_id:
             logger.info(
