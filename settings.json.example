@@ -2,6 +2,7 @@
   "is_open": true,
   "token": "YOUR_TELEGRAM_BOT_TOKEN",
   "timezone": "Asia/Tehran",
+  "fotmob_fixtures_url": "https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0",
   "prediction_close_minutes": 0,
   "reminder_offsets_minutes": [10, 1],
   "admins": [

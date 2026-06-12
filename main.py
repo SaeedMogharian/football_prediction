@@ -23,6 +23,10 @@ def main():
     prediction_close_minutes = int(settings.get("prediction_close_minutes", 0))
     reminder_offsets_minutes = settings.get("reminder_offsets_minutes", [10, 1])
     timezone_name = settings.get("timezone", "UTC")
+    fotmob_fixtures_url = settings.get(
+        "fotmob_fixtures_url",
+        "https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0",
+    )
     if not isinstance(reminder_offsets_minutes, list):
         reminder_offsets_minutes = [10, 1]
     reminder_offsets_minutes = [int(item) for item in reminder_offsets_minutes]
@@ -36,6 +40,7 @@ def main():
         connection,
         prediction_close_minutes=prediction_close_minutes,
         timezone_name=timezone_name,
+        fotmob_fixtures_url=fotmob_fixtures_url,
     )
 
     handlers = build_handlers(service, admin_ids, is_open_signup)
@@ -66,12 +71,6 @@ def main():
         offsets = context.application.bot_data.get("reminder_offsets_minutes", [10, 1])
         reminder_markers: set[str] = context.application.bot_data.setdefault("scheduled_reminder_markers", set())
         now = datetime.now(service_obj.timezone)
-        logging.info(
-            "scheduled_game_reminders tick timezone=%s now=%s offsets=%s",
-            service_obj.timezone_name,
-            now.isoformat(),
-            offsets,
-        )
         scanned_games = 0
         matched_window_games = 0
         sent_messages = 0
@@ -90,7 +89,6 @@ def main():
             played_at = service_obj.get_game_played_at_datetime(game)
             if played_at is None:
                 skipped_invalid_time += 1
-                logging.warning("reminder skip game=%s reason=invalid_played_at value=%r", game.id, game.played_at)
                 continue
 
             delta_seconds = (played_at - now).total_seconds()
@@ -108,7 +106,6 @@ def main():
                     verified_group_ids = service_obj.list_verified_group_ids()
                     if not verified_group_ids:
                         skipped_no_verified_groups += 1
-                        logging.info("reminder window match game=%s offset=%s but no verified groups", game.id, int(offset))
                         break
                     game_had_pending_users = False
                     for group_id in verified_group_ids:
@@ -132,29 +129,25 @@ def main():
                         )
                     if not game_had_pending_users:
                         skipped_no_pending_users += 1
-                        logging.info(
-                            "reminder window match game=%s offset=%s but no pending users in verified groups",
-                            game.id,
-                            int(offset),
-                        )
                     break
             if not matched_any_offset:
                 skipped_no_window += 1
 
-        logging.info(
-            "scheduled_game_reminders summary scanned=%s matched_window=%s sent=%s "
-            "skip_is_played=%s skip_invalid_time=%s skip_started=%s skip_no_window=%s "
-            "skip_no_verified_groups=%s skip_no_pending_users=%s",
-            scanned_games,
-            matched_window_games,
-            sent_messages,
-            skipped_is_played,
-            skipped_invalid_time,
-            skipped_started,
-            skipped_no_window,
-            skipped_no_verified_groups,
-            skipped_no_pending_users,
-        )
+        if sent_messages > 0 or matched_window_games > 0:
+            logging.info(
+                "scheduled_game_reminders summary scanned=%s matched_window=%s sent=%s "
+                "skip_is_played=%s skip_invalid_time=%s skip_started=%s skip_no_window=%s "
+                "skip_no_verified_groups=%s skip_no_pending_users=%s",
+                scanned_games,
+                matched_window_games,
+                sent_messages,
+                skipped_is_played,
+                skipped_invalid_time,
+                skipped_started,
+                skipped_no_window,
+                skipped_no_verified_groups,
+                skipped_no_pending_users,
+            )
 
     async def run_scheduled_recalc_scores(context):
         service_obj: Service = context.application.bot_data["service"]
@@ -162,26 +155,13 @@ def main():
         markers: set[str] = context.application.bot_data.setdefault("scheduled_recalc_markers", set())
         trigger_minutes = (45, 90)
         trigger_window_seconds = 5 * 60
-        logging.info(
-            "scheduled_recalc_scores tick timezone=%s now=%s markers=%s",
-            service_obj.timezone_name,
-            now.isoformat(),
-            len(markers),
-        )
 
         for game in service_obj.games_with_datetime():
             played_at = service_obj.get_game_played_at_datetime(game)
             if played_at is None:
-                logging.warning("recalc skip game=%s reason=invalid_played_at value=%r", game.id, game.played_at)
                 continue
             elapsed_seconds = (now - played_at).total_seconds()
             if elapsed_seconds < 0:
-                logging.debug(
-                    "recalc skip game=%s reason=not_started played_at=%s elapsed=%.1f",
-                    game.id,
-                    played_at.isoformat(),
-                    elapsed_seconds,
-                )
                 continue
 
             for minute in trigger_minutes:
@@ -190,6 +170,10 @@ def main():
                     continue
                 target_seconds = minute * 60
                 if abs(elapsed_seconds - target_seconds) <= trigger_window_seconds:
+                    try:
+                        service_obj.fetch_result(game.id)
+                    except Exception as error:
+                        logging.warning("Scheduled fetch_result failed for game %s: %s", game.id, error)
                     service_obj.calculate_user_scores()
                     markers.add(marker)
                     logging.info("Scheduled recalc_scores executed for game %s at +%s minutes", game.id, minute)

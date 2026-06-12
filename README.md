@@ -96,6 +96,9 @@ Telegram bot for match prediction in a friend group.
 ## Scheduling Settings
 - `timezone`: IANA timezone used for interpreting game `played_at` values and reminder/close checks.
   - Example: `Asia/Tehran`, `UTC`, `Europe/Berlin`
+- `fotmob_fixtures_url`: FotMob fixtures URL used as online result source of truth.
+  - The bot checks pages `0..9` by replacing the `page` query parameter.
+  - Example: `https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0`
 - `prediction_close_minutes`: closes predictions this many minutes before kickoff.
   - Example: `0` closes exactly at kickoff.
   - Example: `10` closes 10 minutes before kickoff.
@@ -103,6 +106,7 @@ Telegram bot for match prediction in a friend group.
 - `reminder_offsets_minutes`: list of reminder offsets (in minutes before kickoff), sent to verified groups.
   - Example: `[10, 1]` sends reminders 10 and 1 minutes before game time.
 - Score recalculation is also scheduled automatically at +45 and +90 minutes from each game's kickoff time.
+- Before each scheduled recalculation trigger, bot tries to fetch final result from FotMob pages `0..9`.
 
 ### Group Verification Flow
 - Group admin runs `/request_group_verification` inside the group.
