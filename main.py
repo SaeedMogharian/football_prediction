@@ -244,6 +244,7 @@ def main():
     application.add_handler(CommandHandler("start", handlers["start"]))
     application.add_handler(handlers["predict_conversation"])
     application.add_handler(CommandHandler("games", handlers["games"]))
+    application.add_handler(handlers["games_show_all_callback"])
     application.add_handler(CommandHandler("rank", handlers["rank"]))
     application.add_handler(CommandHandler("my_stats", handlers["my_stats"]))
     application.add_handler(CommandHandler("results", handlers["results"]))
