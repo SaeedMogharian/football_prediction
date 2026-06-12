@@ -350,21 +350,28 @@ class Service:
         import requests
 
         game = self.game(game_id)
+        current_game_id = self.current_game()
+        if game_id < current_game_id:
+            logger.info(
+                "event=fotmob_fetch_skipped_old_game game_id=%s current_game_id=%s",
+                game_id,
+                current_game_id,
+            )
+            return False
         team_a = self._normalize_team_name(game.team_a)
         team_b = self._normalize_team_name(game.team_b)
+        logger.info("event=fotmob_fetch_start game_id=%s team_a=%s team_b=%s", game_id, game.team_a, game.team_b)
 
-        for page in range(10):
+        for page in range(9, -1, -1):
             page_url = self._build_fotmob_page_url(self.fotmob_fixtures_url, page)
-            logger.info("FotMob query game=%s page=%s url=%s", game_id, page, page_url)
             try:
                 source = requests.get(page_url, headers={"accept-language": "en-US,en;q=0.9"}, timeout=15).text
             except Exception as error:
-                logger.warning("FotMob request failed game=%s page=%s error=%s", game_id, page, error)
+                logger.warning("event=fotmob_fetch_request_failed game_id=%s page=%s error=%s", game_id, page, error)
                 continue
             fixtures = self._extract_fotmob_fixtures(source)
-            logger.info("FotMob parsed fixtures game=%s page=%s count=%s", game_id, page, len(fixtures))
 
-            for fixture in fixtures:
+            for fixture in reversed(fixtures):
                 home_name = self._normalize_team_name(str(fixture.get("home_name") or ""))
                 away_name = self._normalize_team_name(str(fixture.get("away_name") or ""))
                 if home_name != team_a or away_name != team_b:
@@ -372,25 +379,20 @@ class Service:
 
                 home_score = fixture.get("home_score")
                 away_score = fixture.get("away_score")
-                is_finished = bool(fixture.get("finished"))
-                logger.info(
-                    "FotMob game found game=%s page=%s %s vs %s finished=%s score=%s-%s",
-                    game_id,
-                    page,
-                    game.team_a,
-                    game.team_b,
-                    is_finished,
-                    home_score,
-                    away_score,
-                )
-                if home_score is None or away_score is None or not is_finished:
-                    return False
+                if home_score is None or away_score is None:
+                    continue
 
                 self.set_game(game_id, int(home_score), int(away_score), 1)
-                logger.info("FotMob result applied game=%s score=%s-%s", game_id, int(home_score), int(away_score))
+                logger.info(
+                    "event=fotmob_fetch_applied game_id=%s page=%s score=%s-%s",
+                    game_id,
+                    page,
+                    int(home_score),
+                    int(away_score),
+                )
                 return True
 
-        logger.info("FotMob game not found game=%s %s vs %s pages=0..9", game_id, game.team_a, game.team_b)
+        logger.info("event=fotmob_fetch_no_result game_id=%s pages=0..9", game_id)
         return False
 
     #
