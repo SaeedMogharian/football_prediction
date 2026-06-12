@@ -58,11 +58,13 @@ def main():
     application.bot_data["service"] = service
     application.bot_data["admin_ids"] = admin_ids
     application.bot_data["reminder_offsets_minutes"] = reminder_offsets_minutes
+    application.bot_data["scheduled_reminder_markers"] = set()
     application.bot_data["scheduled_recalc_markers"] = set()
 
     async def send_scheduled_reminders(context):
         service_obj: Service = context.application.bot_data["service"]
         offsets = context.application.bot_data.get("reminder_offsets_minutes", [10, 1])
+        reminder_markers: set[str] = context.application.bot_data.setdefault("scheduled_reminder_markers", set())
         now = datetime.now(service_obj.timezone)
         logging.info(
             "scheduled_game_reminders tick timezone=%s now=%s offsets=%s",
@@ -110,12 +112,16 @@ def main():
                         break
                     game_had_pending_users = False
                     for group_id in verified_group_ids:
+                        marker = f"{game.id}:{played_at.isoformat()}:{int(offset)}:{group_id}"
+                        if marker in reminder_markers:
+                            continue
                         pending_usernames = service_obj.get_pending_prediction_usernames(game.id, group_id)
                         if not pending_usernames:
                             continue
                         game_had_pending_users = True
                         message = text + "".join(f"\n@{username}" for username in pending_usernames)
                         await context.bot.send_message(chat_id=group_id, text=message)
+                        reminder_markers.add(marker)
                         sent_messages += 1
                         logging.info(
                             "reminder sent game=%s group=%s offset=%s pending=%s",
