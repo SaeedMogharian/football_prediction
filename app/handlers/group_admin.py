@@ -21,7 +21,7 @@ def build_group_admin_handlers(service):
                 return
 
         service.register_group_request(chat.id, chat.title or "", user.id)
-        await context.bot.send_message(chat_id=chat.id, text="درخواست تایید گروه ثبت شد. لطفا ادمین سراسری تایید کند.")
+        await context.bot.send_message(chat_id=chat.id, text="درخواست باید به تایید ادمین برسد. لطفا صبر کنید.")
 
     @group_admin
     async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,9 +33,8 @@ def build_group_admin_handlers(service):
             game_id = current_game_id + 1 if service.game_exists(current_game_id) and service.game(current_game_id).is_played else current_game_id
 
         text = f"بازی شماره {game_id} به زودی شروع خواهد شد.\nهرچه سریعتر پیش‌بینی خود را وارد کنید:"
-        for member_id, username, _ in service.get_all_users():
-            if service.is_new_prediction(member_id, game_id, chat.id):
-                text += f"\n@{username}"
+        for username in service.get_pending_prediction_usernames(game_id, chat.id):
+            text += f"\n@{username}"
         await context.bot.send_message(chat_id=chat.id, text=text)
 
     @group_admin
