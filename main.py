@@ -13,6 +13,8 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 
 def main():
@@ -57,6 +59,28 @@ def main():
                 BotCommand("cancel", "لغو ثبت پیش‌بینی"),
                 BotCommand("set_time", "تنظیم زمان بازی (ادمین)"),
             ]
+        )
+
+    async def audit_command(update, context):
+        message = update.effective_message
+        user = update.effective_user
+        chat = update.effective_chat
+        if message is None or user is None or chat is None:
+            return
+        text = (message.text or "").strip()
+        if not text.startswith("/"):
+            return
+        command = text.split()[0]
+        now = datetime.now(service.timezone).isoformat()
+        logging.info(
+            "command user_id=%s username=%s chat_id=%s chat_type=%s chat_title=%s when=%s command=%s",
+            user.id,
+            user.username or "",
+            chat.id,
+            chat.type,
+            chat.title or "",
+            now,
+            command,
         )
 
     application = ApplicationBuilder().token(bot_token).post_init(post_init).build()
@@ -121,7 +145,7 @@ def main():
                         reminder_markers.add(marker)
                         sent_messages += 1
                         logging.info(
-                            "reminder sent game=%s group=%s offset=%s pending=%s",
+                            "event=reminder_sent game_id=%s group_id=%s offset_min=%s pending_count=%s",
                             game.id,
                             group_id,
                             int(offset),
@@ -134,7 +158,7 @@ def main():
                 skipped_no_window += 1
 
         if sent_messages > 0 or matched_window_games > 0:
-            logging.info(
+            logging.debug(
                 "scheduled_game_reminders summary scanned=%s matched_window=%s sent=%s "
                 "skip_is_played=%s skip_invalid_time=%s skip_started=%s skip_no_window=%s "
                 "skip_no_verified_groups=%s skip_no_pending_users=%s",
@@ -171,12 +195,18 @@ def main():
                 target_seconds = minute * 60
                 if abs(elapsed_seconds - target_seconds) <= trigger_window_seconds:
                     try:
-                        service_obj.fetch_result(game.id)
+                        fetched = service_obj.fetch_result(game.id)
+                        logging.info(
+                            "event=scheduled_fetch_result game_id=%s minute=%s fetched=%s",
+                            game.id,
+                            minute,
+                            bool(fetched),
+                        )
                     except Exception as error:
-                        logging.warning("Scheduled fetch_result failed for game %s: %s", game.id, error)
+                        logging.debug("Scheduled fetch_result failed for game %s: %s", game.id, error)
                     service_obj.calculate_user_scores()
                     markers.add(marker)
-                    logging.info("Scheduled recalc_scores executed for game %s at +%s minutes", game.id, minute)
+                    logging.info("event=scheduled_recalc_scores game_id=%s minute=%s", game.id, minute)
 
     async def run_scheduled_close_predictions(context):
         service_obj: Service = context.application.bot_data["service"]
@@ -194,7 +224,7 @@ def main():
             if now >= close_at:
                 service_obj.set_game(game.id, game.goals_a, game.goals_b, 1)
                 logging.info(
-                    "Scheduled close_predictions executed for game %s at now=%s close_at=%s",
+                    "event=scheduled_close_predictions game_id=%s now=%s close_at=%s",
                     game.id,
                     now.isoformat(),
                     close_at.isoformat(),
@@ -210,6 +240,7 @@ def main():
             "JobQueue is unavailable. Install with: pip install \"python-telegram-bot[job-queue]\""
         )
 
+    application.add_handler(MessageHandler(filters.COMMAND, audit_command), group=-1)
     application.add_handler(CommandHandler("start", handlers["start"]))
     application.add_handler(handlers["predict_conversation"])
     application.add_handler(CommandHandler("games", handlers["games"]))

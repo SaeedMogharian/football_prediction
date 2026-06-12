@@ -94,7 +94,10 @@ def build_user_handlers(service, is_open_signup):
                 date_label = "Date Unknown:"
                 time_label = "--:--"
 
-            game_line = f"{game_id}: {game.team_a} {goals_a} -  {time_label} - {goals_b} {game.team_b}"
+            if game.is_played:
+                game_line = f"{game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
+            else:
+                game_line = f"{game_id}: {game.team_a} {goals_a} -  {time_label} - {goals_b} {game.team_b}"
             grouped_lines.setdefault(date_label, []).append(game_line)
 
         for date_label, lines in grouped_lines.items():
