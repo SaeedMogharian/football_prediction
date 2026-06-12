@@ -269,25 +269,46 @@ class Service:
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
     def _collect_fixtures_from_json(self, node, fixtures: list[dict]):
+        def _parse_score_pair(value) -> tuple[int | None, int | None]:
+            if isinstance(value, dict):
+                home_value = value.get("home")
+                away_value = value.get("away")
+                try:
+                    home_score = int(home_value) if home_value is not None else None
+                except Exception:
+                    home_score = None
+                try:
+                    away_score = int(away_value) if away_value is not None else None
+                except Exception:
+                    away_score = None
+                return home_score, away_score
+
+            if isinstance(value, str):
+                parts = [part.strip() for part in value.split("-")]
+                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                    return int(parts[0]), int(parts[1])
+            return None, None
+
         if isinstance(node, dict):
             home = node.get("homeTeam") or node.get("home")
             away = node.get("awayTeam") or node.get("away")
             if isinstance(home, dict) and isinstance(away, dict):
                 home_name = home.get("name") or home.get("shortName")
                 away_name = away.get("name") or away.get("shortName")
-                status = node.get("status", {})
+                status = node.get("status")
+                if not isinstance(status, dict):
+                    status = {}
+
                 started = bool(status.get("started") or node.get("started"))
                 finished = bool(status.get("finished") or node.get("finished"))
-                score = node.get("score") or {}
-                score_str = node.get("scoreStr") or ""
-                home_score = score.get("home")
-                away_score = score.get("away")
 
-                if (home_score is None or away_score is None) and isinstance(score_str, str):
-                    parts = [part.strip() for part in score_str.split("-")]
-                    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                        home_score = int(parts[0])
-                        away_score = int(parts[1])
+                home_score, away_score = _parse_score_pair(node.get("score"))
+
+                if home_score is None or away_score is None:
+                    home_score, away_score = _parse_score_pair(node.get("scoreStr"))
+
+                if home_score is None or away_score is None:
+                    home_score, away_score = _parse_score_pair(status.get("scoreStr"))
 
                 fixtures.append(
                     {
@@ -341,6 +362,7 @@ class Service:
                 logger.warning("FotMob request failed game=%s page=%s error=%s", game_id, page, error)
                 continue
             fixtures = self._extract_fotmob_fixtures(source)
+            logger.info("FotMob parsed fixtures game=%s page=%s count=%s", game_id, page, len(fixtures))
 
             for fixture in fixtures:
                 home_name = self._normalize_team_name(str(fixture.get("home_name") or ""))
