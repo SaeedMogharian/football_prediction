@@ -450,16 +450,10 @@ def build_user_handlers(service, is_open_signup):
         group_id = update.effective_chat.id
         ranked_players = service.get_group_rankings(group_id)
         ranking_by_user_id = {user_id: points for user_id, _username, points in ranked_players}
-        group_rankings = []
-
-        for user_id, username, _ in service.get_all_users():
-            try:
-                member = await context.bot.get_chat_member(group_id, user_id)
-            except Exception:
-                continue
-            if member.status not in ("member", "administrator", "creator", "restricted"):
-                continue
-            group_rankings.append((user_id, username, ranking_by_user_id.get(user_id, 0)))
+        group_rankings = [
+            (user_id, username, ranking_by_user_id.get(user_id, 0))
+            for user_id, username in service.get_group_users_from_predictions(group_id)
+        ]
 
         group_rankings.sort(key=lambda item: (-item[2], item[1] or ""))
         text = "رده‌بندی گروه:\n"

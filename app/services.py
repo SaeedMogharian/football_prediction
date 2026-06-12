@@ -506,6 +506,16 @@ class Service:
                 rows.append((user_id, self._users_cache[user_id][0], pred[0], pred[1], pred[2]))
         return rows
 
+    def get_group_users_from_predictions(self, group_id: int) -> list[tuple[int, str | None]]:
+        self._load_predictions_cache()
+        self._load_users_cache()
+        user_ids = {
+            user_id
+            for (user_id, _game_id, pred_group_id) in self._predictions_cache.keys()
+            if pred_group_id == group_id
+        }
+        return [(user_id, self._users_cache.get(user_id, ("", 0))[0]) for user_id in user_ids]
+
     #
     # Scoring helpers
     #
