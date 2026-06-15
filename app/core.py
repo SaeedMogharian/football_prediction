@@ -69,13 +69,6 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
     )
     cursor.execute(
         """
-        INSERT OR IGNORE INTO UserGroupScores (user_id, group_id, score)
-        SELECT user_id, group_id, score FROM PlayerGroupScores
-        """
-    )
-    cursor.execute("DROP TABLE IF EXISTS PlayerGroupScores")
-    cursor.execute(
-        """
         CREATE TABLE IF NOT EXISTS UserGroupScores (
             user_id INTEGER NOT NULL,
             group_id INTEGER NOT NULL,
