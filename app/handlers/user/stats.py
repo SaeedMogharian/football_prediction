@@ -39,7 +39,7 @@ def build_stats_handlers(service):
 
         text = f"@{user.username}\nآمار شما در این گروه:"
         text += f"\n{len(predictions)} پیش‌بینی (برای {predicted_played_games_count} بازی برگزار شده)"
-        text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون"
+        text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون ({predicted_played_games_count}/{played_games_count})"
         text += f"\n{scores.count(10)} پیش‌بینی دقیق"
         avg_den = min(played_games_count, len(scores)) if scores and played_games_count else 1
         text += f"\nمیانگین {round(sum(scores) / avg_den, 2) if scores else 0} امتیاز از هر پیش‌بینی"
