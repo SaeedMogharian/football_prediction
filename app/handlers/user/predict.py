@@ -1,7 +1,8 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
-from datetime import datetime
 import logging
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import TimedOut
+from telegram.ext import CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler, filters
 
 from app.core import group_user
 
@@ -9,55 +10,14 @@ SELECT_GAME, ENTER_SCORE_A, ENTER_SCORE_B = range(3)
 logger = logging.getLogger(__name__)
 
 
-def build_user_handlers(service, is_open_signup):
-    def _build_games_text(visible_count: int = 12, show_all: bool = False) -> tuple[str, bool]:
-        response_text = "بازی‌ها:\n"
-        game_ids = service.list_game_ids()
-        if not game_ids:
-            return response_text, False
+#
+# Predict command + conversation
+#
+def is_valid_prediction_input(service, game_id: int, pred_a: int, pred_b: int) -> bool:
+    return service.game_exists(game_id) and pred_a >= 0 and pred_b >= 0
 
-        if show_all:
-            start_game_id = 1
-            end_game_id = len(game_ids) + 1
-        else:
-            current_game_id = service.current_game()
-            start_game_id = max(current_game_id - visible_count // 4, 1)
-            start_game_id = min(max(len(game_ids) - visible_count + 1, 1), start_game_id)
-            end_game_id = min(start_game_id + visible_count, len(game_ids) + 1)
 
-        grouped_lines: dict[str, list[str]] = {}
-        for game_id in range(start_game_id, end_game_id):
-            if not service.game_exists(game_id):
-                continue
-            game = service.game(game_id)
-            goals_a = game.goals_a if game.is_played else "TBD"
-            goals_b = game.goals_b if game.is_played else "TBD"
-            if game.played_at:
-                try:
-                    played_at_dt = datetime.fromisoformat(game.played_at)
-                    date_label = played_at_dt.strftime("%B %d:")
-                    time_label = played_at_dt.strftime("%H:%M")
-                except Exception:
-                    date_label = "Date Unknown:"
-                    time_label = "--:--"
-            else:
-                date_label = "Date Unknown:"
-                time_label = "--:--"
-
-            if game.is_played:
-                game_line = f"{game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
-            else:
-                game_line = f"{game_id}: {game.team_a} {goals_a} -  {time_label} - {goals_b} {game.team_b}"
-            grouped_lines.setdefault(date_label, []).append(game_line)
-
-        for date_label, lines in grouped_lines.items():
-            response_text += f"\n{date_label}\n"
-            for line in lines:
-                response_text += f"{line}\n"
-
-        has_more = not show_all and len(game_ids) > max(0, end_game_id - start_game_id)
-        return response_text, has_more
-
+def build_predict_handlers(service):
     def _predict_user_label(user) -> str:
         if user.username:
             return f"@{user.username}"
@@ -65,69 +25,6 @@ def build_user_handlers(service, is_open_signup):
 
     def _predict_header(user) -> str:
         return f"{_predict_user_label(user)}"
-
-    async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        chat = update.effective_chat
-        user = update.effective_user
-        admin_ids = context.application.bot_data["admin_ids"]
-        is_super_admin = user.id in admin_ids
-
-        if not is_super_admin and chat.type not in ("group", "supergroup"):
-            await context.bot.send_message(
-                chat_id=chat.id,
-                text="این ربات در گروه کار می‌کند. لطفا ربات را به گروه اضافه کنید و دستور /start را داخل گروه اجرا کنید.",
-            )
-            return
-        if not is_super_admin and not service.is_group_registered(chat.id):
-            await context.bot.send_message(
-                chat_id=chat.id,
-                text="این گروه هنوز ثبت نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
-            )
-            return
-        if not is_super_admin and not service.is_group_verified(chat.id):
-            await context.bot.send_message(
-                chat_id=chat.id,
-                text="این گروه هنوز تایید نشده است. از ادمین گروه بخواهید دستور /request_group_verification را اجرا کند.",
-            )
-            return
-
-        if not user.username:
-            await context.bot.send_message(chat_id=chat.id, text="بدون داشتن یوزرنیم نمی‌توانید از بات استفاده کنید")
-            return
-
-        if not service.user_exists(user.id):
-            if is_open_signup or is_super_admin:
-                service.add_user(user)
-            else:
-                await context.bot.send_message(chat_id=chat.id, text="شرمنده عضویت نداریم!")
-                return
-
-        text = f"سلام {user.first_name}\nبه بات پیش‌بینی خوش اومدی!"
-        text += "\nلیست بازی‌ها رو از /games ببین."
-        text += "\nبرای ثبت پیش‌بینی دستور /predict رو بزن."
-        await context.bot.send_message(chat_id=chat.id, text=text)
-
-    @group_user
-    async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            visible_count = int(context.args[0])
-        except Exception:
-            visible_count = 12
-
-        response_text, has_more = _build_games_text(visible_count=visible_count, show_all=False)
-        reply_markup = None
-        if has_more:
-            reply_markup = InlineKeyboardMarkup(
-                [[InlineKeyboardButton("نمایش همه بازی‌ها", callback_data="games:all")]]
-            )
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, reply_markup=reply_markup)
-
-    @group_user
-    async def games_show_all_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        await query.answer()
-        response_text, _ = _build_games_text(show_all=True)
-        await query.edit_message_text(text=response_text)
 
     def _open_games_for_prediction(visible_count: int = 8):
         game_ids = service.list_game_ids()
@@ -178,19 +75,10 @@ def build_user_handlers(service, is_open_signup):
             raise ValueError
         return value
 
-    def _parse_score(text: str):
-        cleaned = text.strip()
-        for separator in ("-", " ", ":"):
-            if separator in cleaned:
-                parts = cleaned.split(separator, 1)
-                if len(parts) == 2:
-                    return int(parts[0].strip()), int(parts[1].strip())
-        raise ValueError
-
     def _save_prediction(user_id: int, group_id: int, game_id: int, pred_a: int, pred_b: int) -> str:
-        prediction_input = (user_id, game_id, group_id, pred_a, pred_b, 0)
-        if not service.is_valid_prediction_input(prediction_input):
+        if not is_valid_prediction_input(service, game_id, pred_a, pred_b):
             raise ValueError
+        prediction_input = (user_id, game_id, group_id, pred_a, pred_b, 0)
 
         game = service.game(game_id)
         is_open_for_prediction = service.is_prediction_open(game_id)
@@ -208,13 +96,13 @@ def build_user_handlers(service, is_open_signup):
             return f"پیش‌بینی شما تغییر کرد:\n{game_id}: {game.team_a} {pred_a} - {pred_b} {game.team_b}"
         return "شما قبلا این بازی را پیش‌بینی کرده‌اید"
 
-    async def _send_prediction_result(update: Update, context: ContextTypes.DEFAULT_TYPE, result_text: str):
+    async def _send_prediction_result(update, context, result_text: str):
         user = update.effective_user
         chat_id = update.effective_chat.id
         await context.bot.send_message(chat_id=chat_id, text=f"{_predict_header(user)}\n{result_text}")
 
     @group_user
-    async def predict_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_start(update, context):
         chat = update.effective_chat
         if chat.type not in ("group", "supergroup"):
             await context.bot.send_message(
@@ -254,21 +142,28 @@ def build_user_handlers(service, is_open_signup):
         context.user_data.pop("predict_score_a", None)
         context.user_data.pop("predict_input_message_id", None)
         user = update.effective_user
-        sent = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=(
-                f"{_predict_header(user)}\n"
-                " یک بازی را از لیست انتخاب کنید\n"
-                "برای ورود دستی عدد، به پیام مرحله ریپلای کنید.\n\n"
-                "برای لغو: /cancel"
-            ),
-            reply_markup=keyboard,
-        )
+        try:
+            sent = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    f"{_predict_header(user)}\n"
+                    " یک بازی را از لیست انتخاب کنید\n"
+                    "برای لغو: /cancel"
+                ),
+                reply_markup=keyboard,
+            )
+        except TimedOut:
+            logger.warning(
+                "event=send_message_timeout command=/predict chat_id=%s user_id=%s",
+                update.effective_chat.id,
+                user.id,
+            )
+            return ConversationHandler.END
         context.user_data["predict_input_message_id"] = sent.message_id
         return SELECT_GAME
 
     @group_user
-    async def predict_game_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_game_selected(update, context):
         query = update.callback_query
         await query.answer()
         game_id = int(query.data.rsplit(":", 1)[-1])
@@ -290,7 +185,7 @@ def build_user_handlers(service, is_open_signup):
         return ENTER_SCORE_A
 
     @group_user
-    async def predict_score_a_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_score_a_selected(update, context):
         query = update.callback_query
         await query.answer()
         _, _, pred_a = query.data.split(":")
@@ -315,7 +210,7 @@ def build_user_handlers(service, is_open_signup):
         return ENTER_SCORE_B
 
     @group_user
-    async def predict_enter_score_a(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_enter_score_a(update, context):
         game_id = context.user_data.get("predict_game_id")
         if game_id is None:
             await context.bot.send_message(
@@ -364,7 +259,7 @@ def build_user_handlers(service, is_open_signup):
         return ENTER_SCORE_B
 
     @group_user
-    async def predict_score_b_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_score_b_selected(update, context):
         query = update.callback_query
         await query.answer()
         _, _, pred_b = query.data.split(":")
@@ -387,7 +282,7 @@ def build_user_handlers(service, is_open_signup):
         return ConversationHandler.END
 
     @group_user
-    async def predict_enter_score_b(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_enter_score_b(update, context):
         game_id = context.user_data.get("predict_game_id")
         pred_a = context.user_data.get("predict_score_a")
         if game_id is None or pred_a is None:
@@ -429,7 +324,7 @@ def build_user_handlers(service, is_open_signup):
         return ConversationHandler.END
 
     @group_user
-    async def predict_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_cancel(update, context):
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
         context.user_data.pop("predict_input_message_id", None)
@@ -437,7 +332,7 @@ def build_user_handlers(service, is_open_signup):
         return ConversationHandler.END
 
     @group_user
-    async def predict_already_active(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def predict_already_active(update, context):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="شما یک گفت‌وگوی پیش‌بینی فعال دارید. لطفا ابتدا آن را کامل کنید یا /cancel بزنید، سپس دوباره /predict را اجرا کنید.",
@@ -465,106 +360,4 @@ def build_user_handlers(service, is_open_signup):
         fallbacks=[CommandHandler("cancel", predict_cancel)],
     )
 
-    @group_user
-    async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        group_id = update.effective_chat.id
-        ranked_players = service.get_group_rankings(group_id)
-        ranking_by_user_id = {user_id: points for user_id, _username, points in ranked_players}
-        group_rankings = [
-            (user_id, username, ranking_by_user_id.get(user_id, 0))
-            for user_id, username in service.get_group_users_from_predictions(group_id)
-        ]
-
-        group_rankings.sort(key=lambda item: (-item[2], item[1] or ""))
-        text = "رده‌بندی گروه:\n"
-        for index, (_, username, points) in enumerate(group_rankings, start=1):
-            text += f"{index} - {username} : {points}\n"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-
-    @group_user
-    async def my_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        group_id = update.effective_chat.id
-        user = update.effective_user
-        try:
-            recent_limit = int(context.args[0])
-        except Exception:
-            recent_limit = 10
-
-        predictions = service.get_user_predictions(user.id, group_id)
-        scores = [item[2] for item in predictions.values()]
-        played_games_count = service.current_game()
-        coverage = min(len(predictions), played_games_count) * 100 // played_games_count if played_games_count else 0
-
-        text = f"@{user.username}\nآمار شما در این گروه:"
-        text += f"\n{len(predictions)} پیش‌بینی ({played_games_count} بازی برگزار شده)"
-        text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون"
-        text += f"\n{scores.count(10)} پیش‌بینی دقیق"
-        avg_den = min(played_games_count, len(scores)) if scores and played_games_count else 1
-        text += f"\nمیانگین {round(sum(scores) / avg_den, 2) if scores else 0} امتیاز از هر پیش‌بینی"
-
-        text += "\n\nآخرین پیش‌بینی‌ها"
-        if predictions:
-            game_id = max(predictions.keys())
-            shown = 0
-            while game_id >= 1 and shown < recent_limit:
-                if game_id in predictions and service.game_exists(game_id):
-                    game = service.game(game_id)
-                    score_text = predictions[game_id][2] if game.is_played else "np"
-                    text += (
-                        f"\n{game_id}: {game.team_a} {predictions[game_id][0]} - "
-                        f"{predictions[game_id][1]} {game.team_b}: {score_text}"
-                    )
-                    shown += 1
-                game_id -= 1
-
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-
-    @group_user
-    async def results_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        group_id = update.effective_chat.id
-        user = update.effective_user
-
-        try:
-            requested_game_id = int(context.args[0])
-            game_id = requested_game_id if service.game_exists(requested_game_id) else service.current_game()
-        except Exception:
-            game_id = service.current_game()
-
-        if not service.game_exists(game_id):
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="بازی پیدا نشد.")
-            return
-
-        game = service.game(game_id)
-        logger.info(
-            "results_command start user_id=%s chat_id=%s game_id=%s game_is_played=%s",
-            user.id if user else None,
-            group_id,
-            game_id,
-            bool(game.is_played),
-        )
-        try:
-            fetched = service.fetch_result(game_id)
-            logger.info("results_command fetch_result game_id=%s fetched=%s", game_id, bool(fetched))
-            game = service.game(game_id)
-        except Exception as error:
-            logger.exception("results_command fetch_result failed game_id=%s error=%s", game_id, error)
-
-        goals_a = game.goals_a if game.is_played else "TBD"
-        goals_b = game.goals_b if game.is_played else "TBD"
-        text = f"تمام پیش‌بینی‌ها برای بازی {game_id}:\n{game.team_a} {goals_a} - {goals_b} {game.team_b}\n"
-        rows = service.get_predictions_for_game(game_id, group_id)
-        sorted_rows = sorted([[row[4], row[1], row[2], row[3]] for row in rows], reverse=True)
-        for row in sorted_rows:
-            score_text = row[0] if game.is_played else "np"
-            text += f"\n{row[1]}: {row[2]} - {row[3]}: {score_text}"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-
-    return {
-        "start": start_command,
-        "predict_conversation": predict_conversation,
-        "games": games_command,
-        "rank": rank_command,
-        "my_stats": my_stats_command,
-        "results": results_command,
-        "games_show_all_callback": CallbackQueryHandler(games_show_all_callback, pattern=r"^games:all$"),
-    }
+    return {"predict_conversation": predict_conversation}

@@ -29,10 +29,6 @@ def create_connection(db_path: str = "db.sqlite3"):
 def init_db(cursor, connection, schema_path: str = "schema.sql"):
     with open(schema_path, "r") as file:
         cursor.executescript(file.read())
-    cursor.execute("PRAGMA table_info(Games)")
-    game_columns = {row[1] for row in cursor.fetchall()}
-    if "played_at" not in game_columns:
-        cursor.execute('ALTER TABLE Games ADD COLUMN played_at TEXT')
     connection.commit()
 
 #

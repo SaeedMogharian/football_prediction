@@ -95,7 +95,8 @@ def build_super_admin_handlers(service, unknown):
             user_row = next((row for row in users if row[1] == username), None)
             if not user_row:
                 raise KeyError
-            user_id, _, score = user_row
+            user_id, _, _ = user_row
+            score = service.get_total_user_group_score(user_id)
             admin_ids = context.application.bot_data["admin_ids"]
             if user_id in admin_ids:
                 raise KeyError

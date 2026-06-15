@@ -1,7 +1,6 @@
 CREATE TABLE IF NOT EXISTS "Users" (
     "t_id" INTEGER NOT NULL UNIQUE,
     "username" TEXT UNIQUE,
-    "score" INTEGER DEFAULT 0,
     PRIMARY KEY("t_id")
 );
 
@@ -41,5 +40,14 @@ CREATE TABLE IF NOT EXISTS "Predictions" (
     PRIMARY KEY("user", "game", "group_id"),
     FOREIGN KEY("user") REFERENCES "Users"("t_id") ON DELETE CASCADE,
     FOREIGN KEY("game") REFERENCES "Games"("id") ON DELETE CASCADE,
+    FOREIGN KEY("group_id") REFERENCES "Groups"("chat_id") ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS "UserGroupScores" (
+    "user_id" INTEGER NOT NULL,
+    "group_id" INTEGER NOT NULL,
+    "score" INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY("user_id", "group_id"),
+    FOREIGN KEY("user_id") REFERENCES "Users"("t_id") ON DELETE CASCADE,
     FOREIGN KEY("group_id") REFERENCES "Groups"("chat_id") ON DELETE CASCADE
 );
