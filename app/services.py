@@ -139,7 +139,7 @@ class Service:
         return
 
     #
-    # Team helpers
+    # Group helpers
     #
     def register_group_request(self, chat_id: int, title: str, requested_by: int):
         self.cursor.execute(
@@ -182,6 +182,7 @@ class Service:
         self._load_groups_cache()
         return chat_id in self._groups_cache
 
+    # Team helpers
     def add_teams(self, teams: list[str]):
         for team in teams:
             self.cursor.execute("INSERT OR IGNORE INTO Teams (name) VALUES (?)", (team,))
@@ -480,9 +481,6 @@ class Service:
     def games_with_datetime(self) -> list[Game]:
         self._load_games_cache()
         return [game for game in self._games_cache.values() if game.played_at]
-
-    def is_valid_prediction_input(self, prediction_input):
-        return self.game_exists(prediction_input[1]) and prediction_input[3] >= 0 and prediction_input[4] >= 0
 
     def add_prediction(self, prediction):
         self.cursor.execute(
