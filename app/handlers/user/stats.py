@@ -30,10 +30,15 @@ def build_stats_handlers(service):
         predictions = service.get_user_predictions(user.id, group_id)
         scores = [item[2] for item in predictions.values()]
         played_games_count = service.current_game()
-        coverage = min(len(predictions), played_games_count) * 100 // played_games_count if played_games_count else 0
+        predicted_played_games_count = sum(
+            1
+            for game_id in predictions
+            if game_id <= played_games_count and service.game_exists(game_id)
+        )
+        coverage = predicted_played_games_count * 100 // played_games_count if played_games_count else 0
 
         text = f"@{user.username}\nآمار شما در این گروه:"
-        text += f"\n{len(predictions)} پیش‌بینی ({played_games_count} بازی برگزار شده)"
+        text += f"\n{len(predictions)} پیش‌بینی (برای {predicted_played_games_count} بازی برگزار شده)"
         text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون"
         text += f"\n{scores.count(10)} پیش‌بینی دقیق"
         avg_den = min(played_games_count, len(scores)) if scores and played_games_count else 1
