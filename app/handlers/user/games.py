@@ -30,8 +30,9 @@ def build_games_handlers(service):
             if not service.game_exists(game_id):
                 continue
             game = service.game(game_id)
-            goals_a = game.goals_a if game.is_played else "TBD"
-            goals_b = game.goals_b if game.is_played else "TBD"
+            result_is_final = service.is_result_final(game)
+            goals_a = game.goals_a if result_is_final else "TBD"
+            goals_b = game.goals_b if result_is_final else "TBD"
             if game.played_at:
                 try:
                     played_at_dt = datetime.fromisoformat(game.played_at)
@@ -44,7 +45,7 @@ def build_games_handlers(service):
                 date_label = "Date Unknown:"
                 time_label = "--:--"
 
-            if game.is_played:
+            if result_is_final:
                 game_line = f"{game_id}: {game.team_a} {goals_a} - {goals_b} {game.team_b}"
             else:
                 game_line = f"{game_id}: {game.team_a} ({time_label}) {game.team_b}"

@@ -51,7 +51,11 @@ def build_stats_handlers(service):
             while game_id >= 1 and shown < recent_limit:
                 if game_id in predictions and service.game_exists(game_id):
                     game = service.game(game_id)
-                    score_text = predictions[game_id][2] if game.is_played else "np"
+                    score_text = (
+                        predictions[game_id][2]
+                        if service.is_result_final(game)
+                        else "np"
+                    )
                     text += (
                         f"\n{game_id}: {game.team_a} {predictions[game_id][0]} - "
                         f"{predictions[game_id][1]} {game.team_b}: {score_text}"
@@ -82,22 +86,17 @@ def build_stats_handlers(service):
             user.id if user else None,
             group_id,
             game_id,
-            bool(game.is_played),
+            service.is_result_final(game),
         )
-        try:
-            fetched = service.fetch_result(game_id)
-            logger.info("results_command fetch_result game_id=%s fetched=%s", game_id, bool(fetched))
-            game = service.game(game_id)
-        except Exception as error:
-            logger.exception("results_command fetch_result failed game_id=%s error=%s", game_id, error)
 
-        goals_a = game.goals_a if game.is_played else "TBD"
-        goals_b = game.goals_b if game.is_played else "TBD"
+        result_is_final = service.is_result_final(game)
+        goals_a = game.goals_a if result_is_final else "TBD"
+        goals_b = game.goals_b if result_is_final else "TBD"
         text = f"تمام پیش‌بینی‌ها برای بازی {game_id}:\n{game.team_a} {goals_a} - {goals_b} {game.team_b}\n"
         rows = service.get_predictions_for_game(game_id, group_id)
         sorted_rows = sorted([[row[4], row[1], row[2], row[3]] for row in rows], reverse=True)
         for row in sorted_rows:
-            score_text = row[0] if game.is_played else "np"
+            score_text = row[0] if result_is_final else "np"
             text += f"\n{row[1]}: {row[2]} - {row[3]}: {score_text}"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 

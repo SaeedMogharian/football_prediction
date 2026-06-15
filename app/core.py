@@ -29,6 +29,23 @@ def create_connection(db_path: str = "db.sqlite3"):
 def init_db(cursor, connection, schema_path: str = "schema.sql"):
     with open(schema_path, "r") as file:
         cursor.executescript(file.read())
+    game_columns = {
+        row[1] for row in cursor.execute("PRAGMA table_info(Games)").fetchall()
+    }
+    if "api_fixture_id" not in game_columns:
+        cursor.execute("ALTER TABLE Games ADD COLUMN api_fixture_id INTEGER")
+    result_status_was_added = "result_status" not in game_columns
+    if result_status_was_added:
+        cursor.execute("ALTER TABLE Games ADD COLUMN result_status TEXT")
+
+        # Only rows present before this migration are treated as legacy results.
+        cursor.execute(
+            """
+            UPDATE Games
+            SET result_status = 'LEGACY_FINAL'
+            WHERE isPlayed = 1 AND result_status IS NULL
+            """
+        )
     connection.commit()
 
 #

@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS "Games" (
     "goals_b" INTEGER NOT NULL DEFAULT 0,
     "played_at" TEXT,
     "isPlayed" INTEGER NOT NULL DEFAULT 0,
+    "api_fixture_id" INTEGER,
+    "result_status" TEXT,
     PRIMARY KEY("id" AUTOINCREMENT),
     FOREIGN KEY("team_a") REFERENCES "Teams"("name"),
     FOREIGN KEY("team_b") REFERENCES "Teams"("name")

@@ -8,6 +8,7 @@ from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHan
 from telegram.error import TimedOut
 
 from app.core import load_settings, create_connection, init_db
+from app.jobs import run_scheduled_fetch_results
 from app.services import Service
 from app.handlers import build_handlers
 
@@ -37,10 +38,11 @@ def main():
     prediction_close_minutes = int(settings.get("prediction_close_minutes", 0))
     reminder_offsets_minutes = settings.get("reminder_offsets_minutes", [10, 1])
     timezone_name = settings.get("timezone", "UTC")
-    fotmob_fixtures_url = settings.get(
-        "fotmob_fixtures_url",
-        "https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0",
-    )
+    api_football_key = str(settings.get("api_football_key", "")).strip()
+    if not api_football_key or api_football_key == "YOUR_RAPIDAPI_KEY":
+        raise ValueError(
+            "settings.json must define a valid api_football_key for API-Football."
+        )
     if not isinstance(reminder_offsets_minutes, list):
         reminder_offsets_minutes = [10, 1]
     reminder_offsets_minutes = [int(item) for item in reminder_offsets_minutes]
@@ -54,7 +56,7 @@ def main():
         connection,
         prediction_close_minutes=prediction_close_minutes,
         timezone_name=timezone_name,
-        fotmob_fixtures_url=fotmob_fixtures_url,
+        api_football_key=api_football_key,
     )
 
     handlers = build_handlers(service, admin_ids, is_open_signup)
@@ -106,7 +108,6 @@ def main():
     application.bot_data["admin_ids"] = admin_ids
     application.bot_data["reminder_offsets_minutes"] = reminder_offsets_minutes
     application.bot_data["scheduled_reminder_markers"] = set()
-    application.bot_data["scheduled_recalc_markers"] = set()
 
     async def send_scheduled_reminders(context):
         service_obj: Service = context.application.bot_data["service"]
@@ -191,41 +192,6 @@ def main():
                 skipped_no_pending_users,
             )
 
-    async def run_scheduled_recalc_scores(context):
-        service_obj: Service = context.application.bot_data["service"]
-        now = datetime.now(service_obj.timezone)
-        markers: set[str] = context.application.bot_data.setdefault("scheduled_recalc_markers", set())
-        trigger_minutes = (45, 90)
-        trigger_window_seconds = 5 * 60
-
-        for game in service_obj.games_with_datetime():
-            played_at = service_obj.get_game_played_at_datetime(game)
-            if played_at is None:
-                continue
-            elapsed_seconds = (now - played_at).total_seconds()
-            if elapsed_seconds < 0:
-                continue
-
-            for minute in trigger_minutes:
-                marker = f"{game.id}:{played_at.isoformat()}:{minute}"
-                if marker in markers:
-                    continue
-                target_seconds = minute * 60
-                if abs(elapsed_seconds - target_seconds) <= trigger_window_seconds:
-                    try:
-                        fetched = service_obj.fetch_result(game.id)
-                        logging.info(
-                            "event=scheduled_fetch_result game_id=%s minute=%s fetched=%s",
-                            game.id,
-                            minute,
-                            bool(fetched),
-                        )
-                    except Exception as error:
-                        logging.debug("Scheduled fetch_result failed for game %s: %s", game.id, error)
-                    service_obj.calculate_user_scores()
-                    markers.add(marker)
-                    logging.info("event=scheduled_recalc_scores game_id=%s minute=%s", game.id, minute)
-
     async def run_scheduled_close_predictions(context):
         service_obj: Service = context.application.bot_data["service"]
         now = datetime.now(service_obj.timezone)
@@ -251,7 +217,12 @@ def main():
     job_queue = getattr(application, "_job_queue", None)
     if job_queue is not None:
         job_queue.run_repeating(send_scheduled_reminders, interval=150, first=15, name="scheduled_game_reminders")
-        job_queue.run_repeating(run_scheduled_recalc_scores, interval=300, first=20, name="scheduled_recalc_scores")
+        job_queue.run_repeating(
+            run_scheduled_fetch_results,
+            interval=300,
+            first=20,
+            name="scheduled_fetch_results",
+        )
         job_queue.run_repeating(run_scheduled_close_predictions, interval=60, first=10, name="scheduled_close_predictions")
     else:
         logging.warning(

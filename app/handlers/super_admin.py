@@ -117,7 +117,14 @@ def build_super_admin_handlers(service, unknown):
             goals_b = int(context.args[2])
             if not service.game_exists(game_id):
                 raise ValueError
-            service.set_game(game_id, goals_a, goals_b, 1)
+            service.set_game(
+                game_id,
+                goals_a,
+                goals_b,
+                1,
+                result_status="MANUAL",
+            )
+            service.calculate_user_scores()
             game = service.game(game_id)
             text = f"نتیجه ثبت شد\n{game_id}: {game.team_a} {game.goals_a} - {game.goals_b} {game.team_b}"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
@@ -142,6 +149,12 @@ def build_super_admin_handlers(service, unknown):
         try:
             game_id = int(context.args[0])
             game = service.game(game_id)
+            if service.is_result_final(game):
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="Finalized games cannot be reopened.",
+                )
+                return
             if not game.is_played:
                 await context.bot.send_message(chat_id=update.effective_chat.id, text="این بازی از قبل باز است.")
                 return

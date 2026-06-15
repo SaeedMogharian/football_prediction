@@ -10,7 +10,10 @@ Telegram bot for match prediction in a friend group.
   - `Predictions`
   - `UserGroupScores`
 
-`goals_a`, `goals_b`, `isPlayed`, and `played_at` are dynamic game fields stored in DB and persist across bot restarts.
+`goals_a`, `goals_b`, `isPlayed`, `played_at`, `api_fixture_id`, and
+`result_status` are dynamic game fields stored in DB and persist across bot
+restarts. `isPlayed` locks predictions; `result_status` determines whether a
+result is final and eligible for scoring.
 
 ## Requirements
 - Python 3
@@ -24,7 +27,7 @@ Telegram bot for match prediction in a friend group.
    ```bash
    cp settings.json.example settings.json
    ```
-2. Edit `settings.json` with bot token and admin Telegram IDs.
+2. Edit `settings.json` with the bot token, RapidAPI key, and admin Telegram IDs.
 3. Start:
    ```bash
    python3 main.py
@@ -32,7 +35,7 @@ Telegram bot for match prediction in a friend group.
 
 ## SQLite Schema
 - `Teams(name)`
-- `Games(id, team_a, team_b, goals_a, goals_b, played_at, isPlayed)`
+- `Games(id, team_a, team_b, goals_a, goals_b, played_at, isPlayed, api_fixture_id, result_status)`
 - `Users(t_id, username)`
 - `Groups(chat_id, title, is_verified, requested_by)`
 - `Predictions(user, game, group_id, pred_a, pred_b, score)`
@@ -97,17 +100,37 @@ Telegram bot for match prediction in a friend group.
 ## Scheduling Settings
 - `timezone`: IANA timezone used for interpreting game `played_at` values and reminder/close checks.
   - Example: `Asia/Tehran`, `UTC`, `Europe/Berlin`
-- `fotmob_fixtures_url`: FotMob fixtures URL used as online result source of truth.
-  - The bot checks pages `0..9` by replacing the `page` query parameter.
-  - Example: `https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0`
+- `api_football_key`: RapidAPI key for API-Football v3.
+  - Keep the real key only in ignored `settings.json`; never commit it.
+  - The bot calls `https://api-football-v1.p.rapidapi.com/v3/fixtures`.
 - `prediction_close_minutes`: closes predictions this many minutes before kickoff.
   - Example: `0` closes exactly at kickoff.
   - Example: `10` closes 10 minutes before kickoff.
   - Example: `-5` closes 5 minutes after kickoff.
 - `reminder_offsets_minutes`: list of reminder offsets (in minutes before kickoff), sent to verified groups.
   - Example: `[10, 1]` sends reminders 10 and 1 minutes before game time.
-- Score recalculation is also scheduled automatically at +45 and +90 minutes from each game's kickoff time.
-- Before each scheduled recalculation trigger, bot tries to fetch final result from FotMob pages `0..9`.
+- The bot polls API-Football every five minutes from kickoff through minute 120.
+- Fixture discovery uses the configured timezone and kickoff date, then persists
+  `api_fixture_id` so later polls can query the exact fixture.
+- Polling stops permanently when `result_status` becomes `FT`, `AET`, `PEN`,
+  `MANUAL`, or `LEGACY_FINAL`.
+- API `score.fulltime` values are used for scoring. Extra-time and penalty
+  shootout values are not included.
+
+### Existing Database Migration
+
+On startup, missing API-Football columns are added automatically. Rows that
+already had `isPlayed = 1` before this migration are marked `LEGACY_FINAL` to
+preserve historical scores.
+
+If an active game was only closed for predictions and was incorrectly marked as
+legacy final, clear its result metadata while keeping predictions closed:
+
+```sql
+UPDATE Games
+SET result_status = NULL, api_fixture_id = NULL
+WHERE id = <game_id>;
+```
 
 ### Group Verification Flow
 - Group admin runs `/request_group_verification` inside the group.

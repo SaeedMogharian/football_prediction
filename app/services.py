@@ -1,12 +1,20 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import json
 import logging
 import re
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+import time
+import unicodedata
 from zoneinfo import ZoneInfo
 
+import requests
+
 logger = logging.getLogger(__name__)
+
+API_FOOTBALL_FIXTURES_URL = "https://api-football-v1.p.rapidapi.com/v3/fixtures"
+API_FOOTBALL_HOST = "api-football-v1.p.rapidapi.com"
+FINAL_RESULT_STATUSES = frozenset({"FT", "AET", "PEN", "MANUAL", "LEGACY_FINAL"})
+API_FINAL_STATUSES = frozenset({"FT", "AET", "PEN"})
+_UNSET = object()
 
 
 @dataclass
@@ -18,6 +26,8 @@ class Game:
     goals_b: int
     played_at: str | None
     is_played: int
+    api_fixture_id: int | None
+    result_status: str | None
 
 
 class Service:
@@ -27,23 +37,28 @@ class Service:
         connection,
         prediction_close_minutes: int = 0,
         timezone_name: str = "UTC",
-        fotmob_fixtures_url: str = "",
+        api_football_key: str = "",
     ):
         self.cursor = cursor
         self.connection = connection
         self.prediction_close_minutes = prediction_close_minutes
         self.timezone_name = timezone_name
-        self.fotmob_fixtures_url = fotmob_fixtures_url
+        self.api_football_key = api_football_key
         try:
             self.timezone = ZoneInfo(timezone_name)
         except Exception:
-            self.timezone = ZoneInfo("Asia/Tehran")
+            self.timezone_name = "Asia/Tehran"
+            self.timezone = ZoneInfo(self.timezone_name)
         self._teams_cache: set[str] | None = None
         self._games_cache: dict[int, Game] | None = None
         self._users_cache: dict[int, str] | None = None
         self._groups_cache: dict[int, tuple[str, int]] | None = None
         self._predictions_cache: dict[tuple[int, int, int], tuple[int, int, int]] | None = None
         self._player_group_scores_cache: dict[tuple[int, int], int] | None = None
+        self._fixture_discovery_cache: dict[
+            tuple[str, str], tuple[float, list[dict]]
+        ] = {}
+        self._fixture_discovery_cache_ttl_seconds = 240
 
     def _load_teams_cache(self):
         if self._teams_cache is None:
@@ -53,7 +68,11 @@ class Service:
     def _load_games_cache(self):
         if self._games_cache is None:
             rows = self.cursor.execute(
-                "SELECT id, team_a, team_b, goals_a, goals_b, played_at, isPlayed FROM Games"
+                """
+                SELECT id, team_a, team_b, goals_a, goals_b, played_at,
+                       isPlayed, api_fixture_id, result_status
+                FROM Games
+                """
             ).fetchall()
             self._games_cache = {
                 row[0]: Game(
@@ -64,6 +83,8 @@ class Service:
                     goals_b=row[4],
                     played_at=row[5],
                     is_played=row[6],
+                    api_fixture_id=row[7],
+                    result_status=row[8],
                 )
                 for row in rows
             }
@@ -210,8 +231,16 @@ class Service:
 
     def current_game(self):
         self._load_games_cache()
-        played = [game.id for game in self._games_cache.values() if game.is_played]
+        played = [
+            game.id
+            for game in self._games_cache.values()
+            if self.is_result_final(game)
+        ]
         return max(played) if played else 1
+
+    @staticmethod
+    def is_result_final(game: Game) -> bool:
+        return game.result_status in FINAL_RESULT_STATUSES
 
     def add_games(self, games: list[tuple[str, str, int, int, int, str | None]]):
         for team_a, team_b, goals_a, goals_b, is_played, played_at in games:
@@ -219,27 +248,55 @@ class Service:
                 raise ValueError(f"Unknown team in game: {team_a} vs {team_b}")
             self.cursor.execute(
                 """
-                INSERT INTO Games (team_a, team_b, goals_a, goals_b, isPlayed, played_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO Games (
+                    team_a, team_b, goals_a, goals_b, isPlayed, played_at,
+                    result_status
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (team_a, team_b, goals_a, goals_b, is_played, played_at),
+                (
+                    team_a,
+                    team_b,
+                    goals_a,
+                    goals_b,
+                    is_played,
+                    played_at,
+                    "LEGACY_FINAL" if is_played else None,
+                ),
             )
         self.connection.commit()
         self._games_cache = None
 
-    def set_game(self, game_id: int, goals_a: int, goals_b: int, is_played: int = 1, played_at: str | None = None):
+    def set_game(
+        self,
+        game_id: int,
+        goals_a: int,
+        goals_b: int,
+        is_played: int = 1,
+        played_at: str | None = None,
+        *,
+        api_fixture_id=_UNSET,
+        result_status=_UNSET,
+    ):
         if not self.game_exists(game_id):
-            return
-        if played_at is None:
-            self.cursor.execute(
-                "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ? WHERE id = ?",
-                (goals_a, goals_b, is_played, game_id),
-            )
-        else:
-            self.cursor.execute(
-                "UPDATE Games SET goals_a = ?, goals_b = ?, isPlayed = ?, played_at = ? WHERE id = ?",
-                (goals_a, goals_b, is_played, played_at, game_id),
-            )
+            return False
+
+        assignments = ["goals_a = ?", "goals_b = ?", "isPlayed = ?"]
+        values = [goals_a, goals_b, is_played]
+        if played_at is not None:
+            assignments.append("played_at = ?")
+            values.append(played_at)
+        if api_fixture_id is not _UNSET:
+            assignments.append("api_fixture_id = ?")
+            values.append(api_fixture_id)
+        if result_status is not _UNSET:
+            assignments.append("result_status = ?")
+            values.append(result_status)
+        values.append(game_id)
+        self.cursor.execute(
+            f"UPDATE Games SET {', '.join(assignments)} WHERE id = ?",
+            values,
+        )
         self.connection.commit()
         self._load_games_cache()
         game = self._games_cache[game_id]
@@ -248,8 +305,13 @@ class Service:
         game.is_played = is_played
         if played_at is not None:
             game.played_at = played_at
-        if is_played:
+        if api_fixture_id is not _UNSET:
+            game.api_fixture_id = api_fixture_id
+        if result_status is not _UNSET:
+            game.result_status = result_status
+        if self.is_result_final(game):
             self.recalculate_game_scores(game_id)
+        return True
 
     def set_game_time(self, game_id: int, played_at: str):
         if not self.game_exists(game_id):
@@ -265,157 +327,286 @@ class Service:
 
     @staticmethod
     def _normalize_team_name(name: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
+        decomposed = unicodedata.normalize("NFKD", name or "").casefold()
+        without_marks = "".join(
+            character
+            for character in decomposed
+            if not unicodedata.combining(character)
+        )
+        normalized = re.sub(r"[^a-z0-9]+", "", without_marks)
+        aliases = {
+            "usa": "unitedstates",
+            "us": "unitedstates",
+            "unitedstatesofamerica": "unitedstates",
+            "iran": "iran",
+            "iriran": "iran",
+            "iranislamicrepublicof": "iran",
+            "southkorea": "southkorea",
+            "korearepublic": "southkorea",
+            "republicofkorea": "southkorea",
+            "turkey": "turkey",
+            "turkiye": "turkey",
+            "ivorycoast": "ivorycoast",
+            "cotedivoire": "ivorycoast",
+        }
+        return aliases.get(normalized, normalized)
 
-    @staticmethod
-    def _build_fotmob_page_url(base_url: str, page: int) -> str:
-        parsed = urlparse(base_url)
-        query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        query_items["page"] = str(page)
-        new_query = urlencode(query_items)
-        return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+    def _request_api_football(self, params: dict) -> dict | None:
+        headers = {
+            "x-rapidapi-key": self.api_football_key,
+            "x-rapidapi-host": API_FOOTBALL_HOST,
+        }
+        try:
+            response = requests.get(
+                API_FOOTBALL_FIXTURES_URL,
+                headers=headers,
+                params=params,
+                timeout=15,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as error:
+            logger.warning(
+                "event=api_football_request_failed params=%s error=%s",
+                {key: value for key, value in params.items() if key != "key"},
+                error,
+            )
+            return None
 
-    def _collect_fixtures_from_json(self, node, fixtures: list[dict]):
-        def _parse_score_pair(value) -> tuple[int | None, int | None]:
-            if isinstance(value, dict):
-                home_value = value.get("home")
-                away_value = value.get("away")
-                try:
-                    home_score = int(home_value) if home_value is not None else None
-                except Exception:
-                    home_score = None
-                try:
-                    away_score = int(away_value) if away_value is not None else None
-                except Exception:
-                    away_score = None
-                return home_score, away_score
+        if not isinstance(payload, dict):
+            logger.warning("event=api_football_invalid_payload reason=not_object")
+            return None
+        if payload.get("errors"):
+            logger.warning(
+                "event=api_football_provider_error errors=%s",
+                payload.get("errors"),
+            )
+            return None
+        if not isinstance(payload.get("response"), list):
+            logger.warning("event=api_football_invalid_payload reason=response_not_list")
+            return None
+        return payload
 
-            if isinstance(value, str):
-                parts = [part.strip() for part in value.split("-")]
-                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                    return int(parts[0]), int(parts[1])
-            return None, None
+    def _fixtures_for_date(self, local_date: str) -> list[dict] | None:
+        cache_key = (local_date, self.timezone_name)
+        cached = self._fixture_discovery_cache.get(cache_key)
+        now_monotonic = time.monotonic()
+        if cached and now_monotonic - cached[0] < self._fixture_discovery_cache_ttl_seconds:
+            return cached[1]
 
-        if isinstance(node, dict):
-            home = node.get("homeTeam") or node.get("home")
-            away = node.get("awayTeam") or node.get("away")
-            if isinstance(home, dict) and isinstance(away, dict):
-                home_name = home.get("name") or home.get("shortName")
-                away_name = away.get("name") or away.get("shortName")
-                status = node.get("status")
-                if not isinstance(status, dict):
-                    status = {}
-
-                started = bool(status.get("started") or node.get("started"))
-                finished = bool(status.get("finished") or node.get("finished"))
-
-                home_score, away_score = _parse_score_pair(node.get("score"))
-
-                if home_score is None or away_score is None:
-                    home_score, away_score = _parse_score_pair(node.get("scoreStr"))
-
-                if home_score is None or away_score is None:
-                    home_score, away_score = _parse_score_pair(status.get("scoreStr"))
-
-                fixtures.append(
-                    {
-                        "home_name": home_name,
-                        "away_name": away_name,
-                        "home_score": home_score,
-                        "away_score": away_score,
-                        "started": started,
-                        "finished": finished,
-                    }
-                )
-
-            for value in node.values():
-                self._collect_fixtures_from_json(value, fixtures)
-            return
-
-        if isinstance(node, list):
-            for item in node:
-                self._collect_fixtures_from_json(item, fixtures)
-
-    def _extract_fotmob_fixtures(self, html: str) -> list[dict]:
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(html, "lxml")
         fixtures: list[dict] = []
-        for script in soup.find_all("script"):
-            script_text = (script.string or script.get_text() or "").strip()
-            if not script_text:
-                continue
-            if script_text.startswith("{") and script_text.endswith("}"):
+        page = 1
+        total_pages = 1
+        while page <= total_pages:
+            payload = self._request_api_football(
+                {
+                    "date": local_date,
+                    "timezone": self.timezone_name,
+                    "page": page,
+                }
+            )
+            if payload is None:
+                return None
+            fixtures.extend(payload["response"])
+            paging = payload.get("paging")
+            if isinstance(paging, dict):
                 try:
-                    payload = json.loads(script_text)
-                except Exception:
-                    continue
-                self._collect_fixtures_from_json(payload, fixtures)
+                    total_pages = max(1, int(paging.get("total", 1)))
+                except (TypeError, ValueError):
+                    total_pages = 1
+            page += 1
+
+        self._fixture_discovery_cache[cache_key] = (now_monotonic, fixtures)
         return fixtures
 
-    def fetch_result(self, game_id: int):
-        import requests
+    @staticmethod
+    def _parse_api_datetime(value) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    def _select_matching_fixture(
+        self,
+        fixtures: list[dict],
+        game: Game,
+        played_at_dt: datetime,
+    ) -> dict | None:
+        expected_home = self._normalize_team_name(game.team_a)
+        expected_away = self._normalize_team_name(game.team_b)
+        matches: list[tuple[float, dict]] = []
+        for candidate in fixtures:
+            if not isinstance(candidate, dict):
+                continue
+            teams = candidate.get("teams")
+            fixture = candidate.get("fixture")
+            if not isinstance(teams, dict) or not isinstance(fixture, dict):
+                continue
+            home = teams.get("home")
+            away = teams.get("away")
+            if not isinstance(home, dict) or not isinstance(away, dict):
+                continue
+            home_name = self._normalize_team_name(str(home.get("name") or ""))
+            away_name = self._normalize_team_name(str(away.get("name") or ""))
+            if home_name != expected_home or away_name != expected_away:
+                continue
+
+            fixture_dt = self._parse_api_datetime(fixture.get("date"))
+            if fixture_dt is None:
+                distance = float("inf")
+            else:
+                if fixture_dt.tzinfo is None:
+                    fixture_dt = fixture_dt.replace(tzinfo=self.timezone)
+                distance = abs(
+                    (
+                        fixture_dt.astimezone(self.timezone) - played_at_dt
+                    ).total_seconds()
+                )
+            matches.append((distance, candidate))
+
+        if not matches:
+            return None
+        return min(matches, key=lambda item: item[0])[1]
+
+    @staticmethod
+    def _score_value(value) -> int | None:
+        if isinstance(value, bool) or value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def fetch_result(self, game_id: int) -> bool:
+        if not self.game_exists(game_id):
+            logger.info("event=api_football_fetch_skipped_unknown_game game_id=%s", game_id)
+            return False
 
         game = self.game(game_id)
-        if not game.is_played:
-            logger.info("event=fotmob_fetch_skipped_not_played game_id=%s", game_id)
+        if self.is_result_final(game):
+            logger.info(
+                "event=api_football_fetch_skipped_final game_id=%s status=%s",
+                game_id,
+                game.result_status,
+            )
             return False
+        if not self.api_football_key:
+            logger.error("event=api_football_fetch_skipped_missing_key game_id=%s", game_id)
+            return False
+
         played_at_dt = self.get_game_played_at_datetime(game)
         if played_at_dt is None:
-            logger.info("event=fotmob_fetch_skipped_no_played_at game_id=%s", game_id)
+            logger.info("event=api_football_fetch_skipped_no_played_at game_id=%s", game_id)
             return False
-        elapsed_minutes = (datetime.now(self.timezone) - played_at_dt).total_seconds() / 60
-        if elapsed_minutes < 0 or elapsed_minutes > 150:
+        elapsed_minutes = (
+            datetime.now(self.timezone) - played_at_dt
+        ).total_seconds() / 60
+        if elapsed_minutes < 0 or elapsed_minutes > 120:
             logger.info(
-                "event=fotmob_fetch_skipped_outside_window game_id=%s elapsed_minutes=%.1f",
+                "event=api_football_fetch_skipped_outside_window game_id=%s elapsed_minutes=%.1f",
                 game_id,
                 elapsed_minutes,
             )
             return False
-        current_game_id = self.current_game()
-        if game_id < current_game_id:
+
+        if game.api_fixture_id is not None:
+            payload = self._request_api_football(
+                {
+                    "id": game.api_fixture_id,
+                    "timezone": self.timezone_name,
+                }
+            )
+            fixtures = payload["response"] if payload is not None else None
+        else:
+            fixtures = self._fixtures_for_date(played_at_dt.date().isoformat())
+        if fixtures is None:
+            return False
+
+        matched = self._select_matching_fixture(fixtures, game, played_at_dt)
+        if matched is None:
             logger.info(
-                "event=fotmob_fetch_skipped_old_game game_id=%s current_game_id=%s",
+                "event=api_football_fixture_not_matched game_id=%s team_a=%s team_b=%s",
                 game_id,
-                current_game_id,
+                game.team_a,
+                game.team_b,
             )
             return False
-        team_a = self._normalize_team_name(game.team_a)
-        team_b = self._normalize_team_name(game.team_b)
-        logger.info("event=fotmob_fetch_start game_id=%s team_a=%s team_b=%s", game_id, game.team_a, game.team_b)
 
-        for page in range(9, -1, -1):
-            page_url = self._build_fotmob_page_url(self.fotmob_fixtures_url, page)
-            try:
-                source = requests.get(page_url, headers={"accept-language": "en-US,en;q=0.9"}, timeout=15).text
-            except Exception as error:
-                logger.warning("event=fotmob_fetch_request_failed game_id=%s page=%s error=%s", game_id, page, error)
-                continue
-            fixtures = self._extract_fotmob_fixtures(source)
+        fixture_data = matched.get("fixture")
+        if not isinstance(fixture_data, dict):
+            logger.warning("event=api_football_invalid_fixture game_id=%s", game_id)
+            return False
+        status_data = fixture_data.get("status")
+        if not isinstance(status_data, dict):
+            logger.warning("event=api_football_missing_status game_id=%s", game_id)
+            return False
+        try:
+            fixture_id = int(fixture_data["id"])
+        except (KeyError, TypeError, ValueError):
+            logger.warning("event=api_football_missing_fixture_id game_id=%s", game_id)
+            return False
+        status = str(status_data.get("short") or "").upper()
+        if not status:
+            logger.warning("event=api_football_empty_status game_id=%s", game_id)
+            return False
 
-            for fixture in reversed(fixtures):
-                home_name = self._normalize_team_name(str(fixture.get("home_name") or ""))
-                away_name = self._normalize_team_name(str(fixture.get("away_name") or ""))
-                if home_name != team_a or away_name != team_b:
-                    continue
+        if status not in API_FINAL_STATUSES:
+            self.set_game(
+                game_id,
+                game.goals_a,
+                game.goals_b,
+                game.is_played,
+                api_fixture_id=fixture_id,
+                result_status=status,
+            )
+            logger.info(
+                "event=api_football_fixture_pending game_id=%s fixture_id=%s status=%s",
+                game_id,
+                fixture_id,
+                status,
+            )
+            return False
 
-                home_score = fixture.get("home_score")
-                away_score = fixture.get("away_score")
-                if home_score is None or away_score is None:
-                    continue
+        score = matched.get("score")
+        fulltime = score.get("fulltime") if isinstance(score, dict) else None
+        if not isinstance(fulltime, dict):
+            logger.warning(
+                "event=api_football_missing_fulltime_score game_id=%s fixture_id=%s status=%s",
+                game_id,
+                fixture_id,
+                status,
+            )
+            return False
+        home_score = self._score_value(fulltime.get("home"))
+        away_score = self._score_value(fulltime.get("away"))
+        if home_score is None or away_score is None:
+            logger.warning(
+                "event=api_football_invalid_fulltime_score game_id=%s fixture_id=%s status=%s",
+                game_id,
+                fixture_id,
+                status,
+            )
+            return False
 
-                self.set_game(game_id, int(home_score), int(away_score), 1)
-                logger.info(
-                    "event=fotmob_fetch_applied game_id=%s page=%s score=%s-%s",
-                    game_id,
-                    page,
-                    int(home_score),
-                    int(away_score),
-                )
-                return True
-
-        logger.info("event=fotmob_fetch_no_result game_id=%s pages=0..9", game_id)
-        return False
+        self.set_game(
+            game_id,
+            home_score,
+            away_score,
+            1,
+            api_fixture_id=fixture_id,
+            result_status=status,
+        )
+        logger.info(
+            "event=api_football_result_applied game_id=%s fixture_id=%s status=%s score=%s-%s",
+            game_id,
+            fixture_id,
+            status,
+            home_score,
+            away_score,
+        )
+        return True
 
     #
     # Prediction helpers
@@ -566,7 +757,7 @@ class Service:
 
     def calculate_points(self, game_id: int, pred_a: int, pred_b: int):
         game = self.game(game_id)
-        if game.is_played == 0:
+        if not self.is_result_final(game):
             return 0
         if int(pred_a) == int(game.goals_a) and int(pred_b) == int(game.goals_b):
             return 10
@@ -607,7 +798,7 @@ class Service:
         group_scores: dict[tuple[int, int], int] = {}
         for (user_id, game_id, group_id), (_, _, score) in self._predictions_cache.items():
             game = self._games_cache.get(game_id)
-            if game and game.is_played:
+            if game and self.is_result_final(game):
                 key = (user_id, group_id)
                 group_scores[key] = group_scores.get(key, 0) + score
 
