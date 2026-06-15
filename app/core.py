@@ -50,53 +50,50 @@ def init_db(cursor, connection, schema_path: str = "schema.sql"):
             """
         )
 
-    cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Users_old'")
-    users_old_exists = cursor.fetchone() is not None
-    if users_old_exists:
-        cursor.execute("PRAGMA foreign_keys = OFF")
+    cursor.execute("PRAGMA foreign_keys = OFF")
+    cursor.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        """
+    )
+    table_names = [row[0] for row in cursor.fetchall()]
+    for table_name in table_names:
+        if table_name in {"Users", "Users_old"}:
+            continue
+        cursor.execute(f"PRAGMA foreign_key_list({table_name})")
+        fk_rows = cursor.fetchall()
+        if not any(row[2] == "Users_old" for row in fk_rows):
+            continue
         cursor.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-            """
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
         )
-        table_names = [row[0] for row in cursor.fetchall()]
-        for table_name in table_names:
-            if table_name in {"Users", "Users_old"}:
-                continue
-            cursor.execute(f"PRAGMA foreign_key_list({table_name})")
-            fk_rows = cursor.fetchall()
-            if not any(row[2] == "Users_old" for row in fk_rows):
-                continue
-            cursor.execute(
-                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
-                (table_name,),
-            )
-            create_sql_row = cursor.fetchone()
-            if not create_sql_row or not create_sql_row[0]:
-                continue
-            create_sql = create_sql_row[0].replace("REFERENCES \"Users_old\"", "REFERENCES \"Users\"")
-            create_sql = create_sql.replace("REFERENCES Users_old", "REFERENCES Users")
-            temp_table_name = f"{table_name}__tmp_fix_users_fk"
-            temp_create_sql = create_sql.replace(
-                f"CREATE TABLE {table_name}",
-                f"CREATE TABLE {temp_table_name}",
-                1,
-            ).replace(
-                f'CREATE TABLE "{table_name}"',
-                f'CREATE TABLE "{temp_table_name}"',
-                1,
-            )
-            cursor.execute(temp_create_sql)
-            cursor.execute(f"PRAGMA table_info({table_name})")
-            columns = [row[1] for row in cursor.fetchall()]
-            column_sql = ", ".join(f'"{column}"' for column in columns)
-            cursor.execute(f'INSERT INTO "{temp_table_name}" ({column_sql}) SELECT {column_sql} FROM "{table_name}"')
-            cursor.execute(f'DROP TABLE "{table_name}"')
-            cursor.execute(f'ALTER TABLE "{temp_table_name}" RENAME TO "{table_name}"')
-        cursor.execute("DROP TABLE IF EXISTS Users_old")
-        cursor.execute("PRAGMA foreign_keys = ON")
+        create_sql_row = cursor.fetchone()
+        if not create_sql_row or not create_sql_row[0]:
+            continue
+        create_sql = create_sql_row[0].replace("REFERENCES \"Users_old\"", "REFERENCES \"Users\"")
+        create_sql = create_sql.replace("REFERENCES Users_old", "REFERENCES Users")
+        temp_table_name = f"{table_name}__tmp_fix_users_fk"
+        temp_create_sql = create_sql.replace(
+            f"CREATE TABLE {table_name}",
+            f"CREATE TABLE {temp_table_name}",
+            1,
+        ).replace(
+            f'CREATE TABLE "{table_name}"',
+            f'CREATE TABLE "{temp_table_name}"',
+            1,
+        )
+        cursor.execute(temp_create_sql)
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = [row[1] for row in cursor.fetchall()]
+        column_sql = ", ".join(f'"{column}"' for column in columns)
+        cursor.execute(f'INSERT INTO "{temp_table_name}" ({column_sql}) SELECT {column_sql} FROM "{table_name}"')
+        cursor.execute(f'DROP TABLE "{table_name}"')
+        cursor.execute(f'ALTER TABLE "{temp_table_name}" RENAME TO "{table_name}"')
+    cursor.execute("DROP TABLE IF EXISTS Users_old")
+    cursor.execute("PRAGMA foreign_keys = ON")
 
     cursor.execute("PRAGMA table_info(Games)")
     game_columns = {row[1] for row in cursor.fetchall()}
