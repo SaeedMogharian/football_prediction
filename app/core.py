@@ -29,10 +29,63 @@ def create_connection(db_path: str = "db.sqlite3"):
 def init_db(cursor, connection, schema_path: str = "schema.sql"):
     with open(schema_path, "r") as file:
         cursor.executescript(file.read())
+    cursor.execute("PRAGMA table_info(Users)")
+    user_columns = [row[1] for row in cursor.fetchall()]
+    if "score" in user_columns:
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.execute("ALTER TABLE Users RENAME TO Users_old")
+        cursor.execute(
+            """
+            CREATE TABLE Users (
+                t_id INTEGER NOT NULL UNIQUE,
+                username TEXT UNIQUE,
+                PRIMARY KEY(t_id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO Users (t_id, username)
+            SELECT t_id, username FROM Users_old
+            """
+        )
+        cursor.execute("DROP TABLE Users_old")
+        cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA table_info(Games)")
     game_columns = {row[1] for row in cursor.fetchall()}
     if "played_at" not in game_columns:
         cursor.execute('ALTER TABLE Games ADD COLUMN played_at TEXT')
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS UserGroupScores (
+            user_id INTEGER NOT NULL,
+            group_id INTEGER NOT NULL,
+            score INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, group_id),
+            FOREIGN KEY(user_id) REFERENCES Users(t_id) ON DELETE CASCADE,
+            FOREIGN KEY(group_id) REFERENCES Groups(chat_id) ON DELETE CASCADE
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO UserGroupScores (user_id, group_id, score)
+        SELECT user_id, group_id, score FROM PlayerGroupScores
+        """
+    )
+    cursor.execute("DROP TABLE IF EXISTS PlayerGroupScores")
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS UserGroupScores (
+            user_id INTEGER NOT NULL,
+            group_id INTEGER NOT NULL,
+            score INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, group_id),
+            FOREIGN KEY(user_id) REFERENCES Users(t_id) ON DELETE CASCADE,
+            FOREIGN KEY(group_id) REFERENCES Groups(chat_id) ON DELETE CASCADE
+        )
+        """
+    )
     connection.commit()
 
 #

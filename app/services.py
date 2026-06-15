@@ -40,9 +40,10 @@ class Service:
             self.timezone = ZoneInfo("Asia/Tehran")
         self._teams_cache: set[str] | None = None
         self._games_cache: dict[int, Game] | None = None
-        self._users_cache: dict[int, tuple[str, int]] | None = None
+        self._users_cache: dict[int, str] | None = None
         self._groups_cache: dict[int, tuple[str, int]] | None = None
         self._predictions_cache: dict[tuple[int, int, int], tuple[int, int, int]] | None = None
+        self._player_group_scores_cache: dict[tuple[int, int], int] | None = None
 
     def _load_teams_cache(self):
         if self._teams_cache is None:
@@ -69,8 +70,8 @@ class Service:
 
     def _load_users_cache(self):
         if self._users_cache is None:
-            rows = self.cursor.execute("SELECT t_id, username, score FROM Users").fetchall()
-            self._users_cache = {row[0]: (row[1], row[2]) for row in rows}
+            rows = self.cursor.execute("SELECT t_id, username FROM Users").fetchall()
+            self._users_cache = {row[0]: row[1] for row in rows}
 
     def _load_groups_cache(self):
         if self._groups_cache is None:
@@ -87,6 +88,13 @@ class Service:
                 for row in rows
             }
 
+    def _load_player_group_scores_cache(self):
+        if self._player_group_scores_cache is None:
+            rows = self.cursor.execute(
+                "SELECT user_id, group_id, score FROM UserGroupScores"
+            ).fetchall()
+            self._player_group_scores_cache = {(row[0], row[1]): row[2] for row in rows}
+
     #
     # User helpers
     #
@@ -96,23 +104,23 @@ class Service:
 
     def add_user(self, user):
         self.cursor.execute(
-            "INSERT INTO Users (t_id, username, score) VALUES (?, ?, 0)",
+            "INSERT INTO Users (t_id, username) VALUES (?, ?)",
             (user.id, user.username),
         )
         self.connection.commit()
         self._load_users_cache()
-        self._users_cache[user.id] = (user.username, 0)
+        self._users_cache[user.id] = user.username
 
     def get_user(self, user_id: int):
         self._load_users_cache()
         if user_id not in self._users_cache:
             return None
-        username, score = self._users_cache[user_id]
-        return (user_id, username, score)
+        username = self._users_cache[user_id]
+        return (user_id, username, 0)
 
     def get_all_users(self):
         self._load_users_cache()
-        return [(uid, data[0], data[1]) for uid, data in self._users_cache.items()]
+        return [(uid, username, 0) for uid, username in self._users_cache.items()]
 
     def delete_user(self, user_id: int):
         self.cursor.execute("DELETE FROM Predictions WHERE user = ?", (user_id,))
@@ -122,15 +130,13 @@ class Service:
         self._users_cache.pop(user_id, None)
         self._load_predictions_cache()
         self._predictions_cache = {k: v for k, v in self._predictions_cache.items() if k[0] != user_id}
+        self._load_player_group_scores_cache()
+        self._player_group_scores_cache = {
+            k: v for k, v in self._player_group_scores_cache.items() if k[0] != user_id
+        }
 
     def update_scores(self, scores: dict[int, int]):
-        for user_id, score in scores.items():
-            self.cursor.execute("UPDATE Users SET score = ? WHERE t_id = ?", (score, user_id))
-        self.connection.commit()
-        self._load_users_cache()
-        for user_id, score in scores.items():
-            if user_id in self._users_cache:
-                self._users_cache[user_id] = (self._users_cache[user_id][0], score)
+        return
 
     #
     # Team helpers
@@ -518,7 +524,7 @@ class Service:
         rows = []
         for (user_id, pred_game_id, pred_group_id), pred in self._predictions_cache.items():
             if pred_game_id == game_id and pred_group_id == group_id and user_id in self._users_cache:
-                rows.append((user_id, self._users_cache[user_id][0], pred[0], pred[1], pred[2]))
+                rows.append((user_id, self._users_cache[user_id], pred[0], pred[1], pred[2]))
         return rows
 
     def get_group_users_from_predictions(self, group_id: int) -> list[tuple[int, str | None]]:
@@ -529,27 +535,31 @@ class Service:
             for (user_id, _game_id, pred_group_id) in self._predictions_cache.keys()
             if pred_group_id == group_id
         }
-        return [(user_id, self._users_cache.get(user_id, ("", 0))[0]) for user_id in user_ids]
+        return [(user_id, self._users_cache.get(user_id, "")) for user_id in user_ids]
 
     #
     # Scoring helpers
     #
     def get_group_rankings(self, group_id: int):
-        self._load_predictions_cache()
+        self._load_player_group_scores_cache()
         self._load_users_cache()
-        self._load_games_cache()
-        totals: dict[int, int] = {}
-        for (user_id, game_id, pred_group_id), (_, _, score) in self._predictions_cache.items():
-            if pred_group_id != group_id:
-                continue
-            game = self._games_cache.get(game_id)
-            if not game or not game.is_played:
-                continue
-            totals[user_id] = totals.get(user_id, 0) + score
+        totals: dict[int, int] = {
+            user_id: score
+            for (user_id, score_group_id), score in self._player_group_scores_cache.items()
+            if score_group_id == group_id
+        }
         return sorted(
-            [(user_id, self._users_cache[user_id][0], total) for user_id, total in totals.items() if user_id in self._users_cache],
+            [(user_id, self._users_cache[user_id], total) for user_id, total in totals.items() if user_id in self._users_cache],
             key=lambda x: x[2],
             reverse=True,
+        )
+
+    def get_total_user_group_score(self, user_id: int) -> int:
+        self._load_player_group_scores_cache()
+        return sum(
+            score
+            for (score_user_id, _group_id), score in self._player_group_scores_cache.items()
+            if score_user_id == user_id
         )
 
     def get_group_prediction_count(self, group_id: int) -> int:
@@ -594,12 +604,21 @@ class Service:
         self.connection.commit()
 
     def calculate_user_scores(self):
-        scores = {user_id: 0 for user_id, _, _ in self.get_all_users()}
         self._load_predictions_cache()
         self._load_games_cache()
-        for (user_id, game_id, _group_id), (_, _, score) in self._predictions_cache.items():
+        group_scores: dict[tuple[int, int], int] = {}
+        for (user_id, game_id, group_id), (_, _, score) in self._predictions_cache.items():
             game = self._games_cache.get(game_id)
             if game and game.is_played:
-                scores[user_id] += score
-        self.update_scores(scores)
-        return scores
+                key = (user_id, group_id)
+                group_scores[key] = group_scores.get(key, 0) + score
+
+        self.cursor.execute("DELETE FROM UserGroupScores")
+        for (user_id, group_id), score in group_scores.items():
+            self.cursor.execute(
+                "INSERT INTO UserGroupScores (user_id, group_id, score) VALUES (?, ?, ?)",
+                (user_id, group_id, score),
+            )
+        self.connection.commit()
+        self._player_group_scores_cache = dict(group_scores)
+        return group_scores

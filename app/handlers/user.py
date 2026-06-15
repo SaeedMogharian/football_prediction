@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.error import TimedOut
 from datetime import datetime
 import logging
 
@@ -254,16 +255,23 @@ def build_user_handlers(service, is_open_signup):
         context.user_data.pop("predict_score_a", None)
         context.user_data.pop("predict_input_message_id", None)
         user = update.effective_user
-        sent = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=(
-                f"{_predict_header(user)}\n"
-                " یک بازی را از لیست انتخاب کنید\n"
-                "برای ورود دستی عدد، به پیام مرحله ریپلای کنید.\n\n"
-                "برای لغو: /cancel"
-            ),
-            reply_markup=keyboard,
-        )
+        try:
+            sent = await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    f"{_predict_header(user)}\n"
+                    " یک بازی را از لیست انتخاب کنید\n"
+                    "برای لغو: /cancel"
+                ),
+                reply_markup=keyboard,
+            )
+        except TimedOut:
+            logger.warning(
+                "event=send_message_timeout command=/predict chat_id=%s user_id=%s",
+                update.effective_chat.id,
+                user.id,
+            )
+            return ConversationHandler.END
         context.user_data["predict_input_message_id"] = sent.message_id
         return SELECT_GAME
 
@@ -468,14 +476,7 @@ def build_user_handlers(service, is_open_signup):
     @group_user
     async def rank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_id = update.effective_chat.id
-        ranked_players = service.get_group_rankings(group_id)
-        ranking_by_user_id = {user_id: points for user_id, _username, points in ranked_players}
-        group_rankings = [
-            (user_id, username, ranking_by_user_id.get(user_id, 0))
-            for user_id, username in service.get_group_users_from_predictions(group_id)
-        ]
-
-        group_rankings.sort(key=lambda item: (-item[2], item[1] or ""))
+        group_rankings = service.get_group_rankings(group_id)
         text = "رده‌بندی گروه:\n"
         for index, (_, username, points) in enumerate(group_rankings, start=1):
             text += f"{index} - {username} : {points}\n"

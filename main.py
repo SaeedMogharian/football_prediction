@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
+from telegram.error import TimedOut
 
 from app.core import load_settings, create_connection, init_db
 from app.services import Service
@@ -60,6 +61,12 @@ def main():
                 BotCommand("set_time", "تنظیم زمان بازی (ادمین)"),
             ]
         )
+
+    async def global_error_handler(update, context):
+        if isinstance(context.error, TimedOut):
+            logging.warning("event=telegram_timeout update_type=%s", type(update).__name__ if update else "None")
+            return
+        logging.exception("event=telegram_unhandled_exception error=%s", context.error)
 
     async def audit_command(update, context):
         message = update.effective_message
@@ -262,6 +269,7 @@ def main():
     application.add_handler(CommandHandler("add_teams", handlers["add_teams"]))
     application.add_handler(CommandHandler("add_games", handlers["add_games"]))
     application.add_handler(MessageHandler(filters.COMMAND, handlers["unknown"]))
+    application.add_error_handler(global_error_handler)
     application.run_polling()
 
 
