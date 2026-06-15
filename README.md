@@ -8,6 +8,7 @@ Telegram bot for match prediction in a friend group.
   - `Groups` (Telegram groups and verification state)
   - `Users`
   - `Predictions`
+  - `UserGroupScores`
 
 `goals_a`, `goals_b`, `isPlayed`, and `played_at` are dynamic game fields stored in DB and persist across bot restarts.
 
@@ -32,10 +33,10 @@ Telegram bot for match prediction in a friend group.
 ## SQLite Schema
 - `Teams(name)`
 - `Games(id, team_a, team_b, goals_a, goals_b, played_at, isPlayed)`
-- `Users(t_id, username, score)`
-- `Predictions(user, game, pred_a, pred_b, score)`
+- `Users(t_id, username)`
 - `Groups(chat_id, title, is_verified, requested_by)`
 - `Predictions(user, game, group_id, pred_a, pred_b, score)`
+- `UserGroupScores(user_id, group_id, score)`
 
 ## Commands
 ### User
@@ -114,6 +115,16 @@ Telegram bot for match prediction in a friend group.
 - Super admin can inspect requests with `/pending_groups`.
 
 ### Handler Structure
-- `app/handlers/user.py`: verified group users
+- `app/handlers/user/`: verified group user features
+  - `app/handlers/user/start.py`: `/start`
+  - `app/handlers/user/games.py`: `/games` + games callbacks
+  - `app/handlers/user/predict.py`: prediction conversation + helpers
+  - `app/handlers/user/stats.py`: `/rank`, `/my_stats`, `/results`
+  - `app/handlers/user/__init__.py`: user handler composition
 - `app/handlers/group_admin.py`: group admin (and super admin) commands
 - `app/handlers/super_admin.py`: super admin only commands
+
+### Logging
+- Runtime logs are written to `system.log` in project root.
+- Logs are also printed to console.
+- Rotation is enabled (`5MB` per file, keep `5` backups).
