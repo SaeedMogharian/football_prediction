@@ -29,28 +29,6 @@ def create_connection(db_path: str = "db.sqlite3"):
 def init_db(cursor, connection, schema_path: str = "schema.sql"):
     with open(schema_path, "r") as file:
         cursor.executescript(file.read())
-    cursor.execute("PRAGMA table_info(Users)")
-    user_columns = [row[1] for row in cursor.fetchall()]
-    if "score" in user_columns:
-        cursor.execute("PRAGMA foreign_keys = OFF")
-        cursor.execute("ALTER TABLE Users RENAME TO Users_old")
-        cursor.execute(
-            """
-            CREATE TABLE Users (
-                t_id INTEGER NOT NULL UNIQUE,
-                username TEXT UNIQUE,
-                PRIMARY KEY(t_id)
-            )
-            """
-        )
-        cursor.execute(
-            """
-            INSERT INTO Users (t_id, username)
-            SELECT t_id, username FROM Users_old
-            """
-        )
-        cursor.execute("DROP TABLE Users_old")
-        cursor.execute("PRAGMA foreign_keys = ON")
     cursor.execute("PRAGMA table_info(Games)")
     game_columns = {row[1] for row in cursor.fetchall()}
     if "played_at" not in game_columns:
