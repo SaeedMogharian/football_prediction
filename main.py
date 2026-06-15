@@ -1,5 +1,7 @@
 import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from telegram import BotCommand
 from telegram.ext import filters, MessageHandler, ApplicationBuilder, CommandHandler
@@ -10,9 +12,18 @@ from app.services import Service
 from app.handlers import build_handlers
 
 
+log_file = Path("system.log")
+file_handler = RotatingFileHandler(
+    log_file,
+    maxBytes=5 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
+    handlers=[logging.StreamHandler(), file_handler],
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
