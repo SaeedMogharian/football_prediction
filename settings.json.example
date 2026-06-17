@@ -1,11 +1,11 @@
 {
   "is_open": true,
-  "token": "YOUR_TELEGRAM_BOT_TOKEN",
+  "token": "6507408473:AAGPZf4a95mL9b2SqDXYFyORYxq75_Vt04U",
   "timezone": "Asia/Tehran",
-  "fotmob_fixtures_url": "https://www.fotmob.com/leagues/77/fixtures/world-cup?group=by-date&page=0",
-  "prediction_close_minutes": 0,
-  "reminder_offsets_minutes": [10, 1],
+  "fotmob_fixtures_url": "https://www.fotmob.com/api/data/leagues?id=77&ccode3",
+  "prediction_close_minutes": -1,
+  "reminder_offsets_minutes": [5, 30 , 60],
   "admins": [
-    "123456789"
+    "102285108"
   ]
 }
