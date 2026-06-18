@@ -1,6 +1,6 @@
 {
   "is_open": true,
-  "token": "6507408473:AAGPZf4a95mL9b2SqDXYFyORYxq75_Vt04U",
+  "token": "YOUR-TELEGRAM-BOT-API-TOKEN",
   "timezone": "Asia/Tehran",
   "fotmob_fixtures_url": "https://www.fotmob.com/api/data/leagues?id=77&ccode3",
   "prediction_close_minutes": -1,
