@@ -267,14 +267,6 @@ class Service:
     def _normalize_team_name(name: str) -> str:
         return re.sub(r"[^a-z0-9]+", "", (name or "").lower())
 
-    @staticmethod
-    def _build_fotmob_page_url(base_url: str, page: int) -> str:
-        parsed = urlparse(base_url)
-        query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        query_items["page"] = str(page)
-        new_query = urlencode(query_items)
-        return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
-
     def _collect_fixtures_from_json(self, node, fixtures: list[dict]):
         def _parse_score_pair(value) -> tuple[int | None, int | None]:
             if isinstance(value, dict):
@@ -336,23 +328,6 @@ class Service:
             for item in node:
                 self._collect_fixtures_from_json(item, fixtures)
 
-    def _extract_fotmob_fixtures(self, html: str) -> list[dict]:
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(html, "lxml")
-        fixtures: list[dict] = []
-        for script in soup.find_all("script"):
-            script_text = (script.string or script.get_text() or "").strip()
-            if not script_text:
-                continue
-            if script_text.startswith("{") and script_text.endswith("}"):
-                try:
-                    payload = json.loads(script_text)
-                except Exception:
-                    continue
-                self._collect_fixtures_from_json(payload, fixtures)
-        return fixtures
-
     def fetch_result(self, game_id: int):
         import requests
 
@@ -365,7 +340,7 @@ class Service:
             logger.info("event=fotmob_fetch_skipped_no_played_at game_id=%s", game_id)
             return False
         elapsed_minutes = (datetime.now(self.timezone) - played_at_dt).total_seconds() / 60
-        if elapsed_minutes < 0 or elapsed_minutes > 150:
+        if elapsed_minutes < 0 or elapsed_minutes > 200:
             logger.info(
                 "event=fotmob_fetch_skipped_outside_window game_id=%s elapsed_minutes=%.1f",
                 game_id,
@@ -384,37 +359,41 @@ class Service:
         team_b = self._normalize_team_name(game.team_b)
         logger.info("event=fotmob_fetch_start game_id=%s team_a=%s team_b=%s", game_id, game.team_a, game.team_b)
 
-        for page in range(9, -1, -1):
-            page_url = self._build_fotmob_page_url(self.fotmob_fixtures_url, page)
-            try:
-                source = requests.get(page_url, headers={"accept-language": "en-US,en;q=0.9"}, timeout=15).text
-            except Exception as error:
-                logger.warning("event=fotmob_fetch_request_failed game_id=%s page=%s error=%s", game_id, page, error)
+        # Fetch from JSON API instead of HTML pagination
+        api_url = self.fotmob_fixtures_url
+        try:
+            response = requests.get(api_url, headers={"accept-language": "en-US,en;q=0.9"}, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as error:
+            logger.warning("event=fotmob_fetch_request_failed game_id=%s error=%s", game_id, error)
+            return False
+
+        # Extract matches from JSON structure
+        fixtures: list[dict] = []
+        self._collect_fixtures_from_json(data, fixtures)
+
+        for fixture in reversed(fixtures):
+            home_name = self._normalize_team_name(str(fixture.get("home_name") or ""))
+            away_name = self._normalize_team_name(str(fixture.get("away_name") or ""))
+            if home_name != team_a or away_name != team_b:
                 continue
-            fixtures = self._extract_fotmob_fixtures(source)
 
-            for fixture in reversed(fixtures):
-                home_name = self._normalize_team_name(str(fixture.get("home_name") or ""))
-                away_name = self._normalize_team_name(str(fixture.get("away_name") or ""))
-                if home_name != team_a or away_name != team_b:
-                    continue
+            home_score = fixture.get("home_score")
+            away_score = fixture.get("away_score")
+            if home_score is None or away_score is None:
+                continue
 
-                home_score = fixture.get("home_score")
-                away_score = fixture.get("away_score")
-                if home_score is None or away_score is None:
-                    continue
+            self.set_game(game_id, int(home_score), int(away_score), 1)
+            logger.info(
+                "event=fotmob_fetch_applied game_id=%s score=%s-%s",
+                game_id,
+                int(home_score),
+                int(away_score),
+            )
+            return True
 
-                self.set_game(game_id, int(home_score), int(away_score), 1)
-                logger.info(
-                    "event=fotmob_fetch_applied game_id=%s page=%s score=%s-%s",
-                    game_id,
-                    page,
-                    int(home_score),
-                    int(away_score),
-                )
-                return True
-
-        logger.info("event=fotmob_fetch_no_result game_id=%s pages=0..9", game_id)
+        logger.info("event=fotmob_fetch_no_result game_id=%s", game_id)
         return False
 
     #

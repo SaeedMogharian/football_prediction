@@ -195,7 +195,7 @@ def main():
         service_obj: Service = context.application.bot_data["service"]
         now = datetime.now(service_obj.timezone)
         markers: set[str] = context.application.bot_data.setdefault("scheduled_recalc_markers", set())
-        trigger_minutes = (45, 90)
+        trigger_minutes = (45, 90, 120, 150, 200)
         trigger_window_seconds = 5 * 60
 
         for game in service_obj.games_with_datetime():
