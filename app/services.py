@@ -340,7 +340,7 @@ class Service:
             logger.info("event=fotmob_fetch_skipped_no_played_at game_id=%s", game_id)
             return False
         elapsed_minutes = (datetime.now(self.timezone) - played_at_dt).total_seconds() / 60
-        if elapsed_minutes < 0 or elapsed_minutes > 150:
+        if elapsed_minutes < 0 or elapsed_minutes > 200:
             logger.info(
                 "event=fotmob_fetch_skipped_outside_window game_id=%s elapsed_minutes=%.1f",
                 game_id,
