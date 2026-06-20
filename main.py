@@ -87,7 +87,7 @@ def main():
             command,
         )
 
-    application = ApplicationBuilder().token(bot_token).post_init(post_init).build()
+    application = ApplicationBuilder().token(bot_token).build()
     application.bot_data["service"] = service
     application.bot_data["admin_ids"] = admin_ids
     application.bot_data["reminder_offsets_minutes"] = reminder_offsets_minutes
