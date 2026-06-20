@@ -77,16 +77,8 @@ def build_stats_handlers(service):
             return
 
         game = service.game(game_id)
-        logger.info(
-            "results_command start user_id=%s chat_id=%s game_id=%s game_is_played=%s",
-            user.id if user else None,
-            group_id,
-            game_id,
-            bool(game.is_played),
-        )
         try:
-            fetched = service.fetch_result(game_id)
-            logger.info("results_command fetch_result game_id=%s fetched=%s", game_id, bool(fetched))
+            service.fetch_result(game_id)
             game = service.game(game_id)
         except Exception as error:
             logger.exception("results_command fetch_result failed game_id=%s error=%s", game_id, error)
