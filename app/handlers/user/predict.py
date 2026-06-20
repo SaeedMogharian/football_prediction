@@ -26,21 +26,31 @@ def build_predict_handlers(service):
     def _predict_header(user) -> str:
         return f"{_predict_user_label(user)}"
 
-    def _open_games_for_prediction(visible_count: int = 8):
+    def _open_games_for_prediction(visible_count: int = 8, page: int = 0):
+        page = max(page, 0)
         game_ids = service.list_game_ids()
         if not game_ids:
-            return []
+            return [], page, 0
 
         open_games = []
         for game_id in game_ids:
             if service.is_prediction_open(game_id):
                 open_games.append(game_id)
-            if len(open_games) >= visible_count:
-                break
-        return open_games
 
-    def _build_game_keyboard():
-        open_games = _open_games_for_prediction()
+        total_count = len(open_games)
+        if total_count == 0:
+            return [], page, total_count
+
+        max_page = (total_count - 1) // visible_count
+        if page > max_page:
+            page = max_page
+
+        start = page * visible_count
+        end = start + visible_count
+        return open_games[start:end], page, total_count
+
+    def _build_game_keyboard(page: int = 0):
+        open_games, page, total_count = _open_games_for_prediction(page=page)
         if not open_games:
             return None
 
@@ -55,6 +65,17 @@ def build_predict_handlers(service):
                 row = []
         if row:
             rows.append(row)
+
+        max_page = (total_count - 1) // 8
+        is_last_page = page == max_page
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("« قبلی", callback_data=f"predict:page:prev:{page}"))
+        if not is_last_page:
+            nav_row.append(InlineKeyboardButton("بعدی »", callback_data=f"predict:page:next:{page}"))
+        if nav_row:
+            rows.append(nav_row)
+
         return InlineKeyboardMarkup(rows)
 
     def _build_single_score_keyboard(prefix: str):
@@ -183,6 +204,33 @@ def build_predict_handlers(service):
         )
         context.user_data["predict_input_message_id"] = query.message.message_id
         return ENTER_SCORE_A
+
+    @group_user
+    async def predict_game_page(update, context):
+        query = update.callback_query
+        await query.answer()
+        _, _, direction, raw_page = query.data.split(":")
+        current_page = int(raw_page)
+        next_page = current_page - 1 if direction == "prev" else current_page + 1
+
+        context.user_data.pop("predict_game_id", None)
+        context.user_data.pop("predict_score_a", None)
+
+        keyboard = _build_game_keyboard(next_page)
+        if keyboard is None:
+            await query.edit_message_text(text="فعلا بازی باز برای پیش‌بینی وجود ندارد.")
+            return ConversationHandler.END
+
+        user = update.effective_user
+        await query.edit_message_text(
+            text=(
+                f"{_predict_header(user)}\n"
+                " یک بازی را از لیست انتخاب کنید\n"
+                "برای لغو: /cancel"
+            ),
+            reply_markup=keyboard,
+        )
+        return SELECT_GAME
 
     @group_user
     async def predict_score_a_selected(update, context):
@@ -345,6 +393,7 @@ def build_predict_handlers(service):
             SELECT_GAME: [
                 CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_game_selected, pattern=r"^predict:game:\d+$"),
+                CallbackQueryHandler(predict_game_page, pattern=r"^predict:page:(next|prev):\d+$"),
             ],
             ENTER_SCORE_A: [
                 CommandHandler("predict", predict_already_active),
