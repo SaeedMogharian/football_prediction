@@ -70,12 +70,12 @@ def build_predict_handlers(service):
         is_last_page = page == max_page
         nav_row = []
         if page > 0:
-            nav_row.append(InlineKeyboardButton("قبلی", callback_data=f"predict:page:prev:{page}"))
+            nav_row.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"predict:page:prev:{page}"))
         if not is_last_page:
-            nav_row.append(InlineKeyboardButton("بعدی", callback_data=f"predict:page:next:{page}"))
+            nav_row.append(InlineKeyboardButton("بعدی ▶️", callback_data=f"predict:page:next:{page}"))
         if nav_row:
             rows.append(nav_row)
-        rows.append([InlineKeyboardButton("لغو", callback_data="predict:cancel")])
+        rows.append([InlineKeyboardButton("❌ لغو", callback_data="predict:cancel")])
 
         return InlineKeyboardMarkup(rows)
 
@@ -89,7 +89,7 @@ def build_predict_handlers(service):
                 row = []
         if row:
             rows.append(row)
-        rows.append([InlineKeyboardButton("لغو", callback_data="predict:cancel")])
+        rows.append([InlineKeyboardButton("❌ لغو", callback_data="predict:cancel")])
         return InlineKeyboardMarkup(rows)
 
     def _parse_single_score(text: str):
