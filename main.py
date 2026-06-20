@@ -59,20 +59,6 @@ def main():
 
     handlers = build_handlers(service, admin_ids, is_open_signup)
 
-    async def post_init(application):
-        await application.bot.set_my_commands(
-            [
-                BotCommand("start", "شروع و ثبت‌نام"),
-                BotCommand("predict", "ثبت پیش‌بینی"),
-                BotCommand("games", "لیست بازی‌ها"),
-                BotCommand("rank", "رده‌بندی گروه"),
-                BotCommand("my_stats", "آمار شخصی"),
-                BotCommand("results", "نتایج پیش‌بینی‌ها"),
-                BotCommand("cancel", "لغو ثبت پیش‌بینی"),
-                BotCommand("set_time", "تنظیم زمان بازی (ادمین)"),
-            ]
-        )
-
     async def global_error_handler(update, context):
         if isinstance(context.error, TimedOut):
             logging.warning("event=telegram_timeout update_type=%s", type(update).__name__ if update else "None")
@@ -101,7 +87,7 @@ def main():
             command,
         )
 
-    application = ApplicationBuilder().token(bot_token).post_init(post_init).build()
+    application = ApplicationBuilder().token(bot_token).build()
     application.bot_data["service"] = service
     application.bot_data["admin_ids"] = admin_ids
     application.bot_data["reminder_offsets_minutes"] = reminder_offsets_minutes
