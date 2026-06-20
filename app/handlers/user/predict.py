@@ -75,6 +75,7 @@ def build_predict_handlers(service):
             nav_row.append(InlineKeyboardButton("بعدی", callback_data=f"predict:page:next:{page}"))
         if nav_row:
             rows.append(nav_row)
+        rows.append([InlineKeyboardButton("لغو", callback_data="predict:cancel")])
 
         return InlineKeyboardMarkup(rows)
 
@@ -88,6 +89,7 @@ def build_predict_handlers(service):
                 row = []
         if row:
             rows.append(row)
+        rows.append([InlineKeyboardButton("لغو", callback_data="predict:cancel")])
         return InlineKeyboardMarkup(rows)
 
     def _parse_single_score(text: str):
@@ -169,7 +171,6 @@ def build_predict_handlers(service):
                 text=(
                     f"{_predict_header(user)}\n"
                     " یک بازی را از لیست انتخاب کنید\n"
-                    "برای لغو: /cancel"
                 ),
                 reply_markup=keyboard,
             )
@@ -206,6 +207,16 @@ def build_predict_handlers(service):
         return ENTER_SCORE_A
 
     @group_user
+    async def predict_cancel(update, context):
+        query = update.callback_query
+        await query.answer()
+        context.user_data.pop("predict_game_id", None)
+        context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
+        await query.edit_message_text(text="ثبت پیش‌بینی لغو شد.", reply_markup=None)
+        return ConversationHandler.END
+
+    @group_user
     async def predict_game_page(update, context):
         query = update.callback_query
         await query.answer()
@@ -226,7 +237,7 @@ def build_predict_handlers(service):
             text=(
                 f"{_predict_header(user)}\n"
                 " یک بازی را از لیست انتخاب کنید\n"
-                "برای لغو: /cancel"
+                "برای لغو: از دکمه زیر استفاده کنید"
             ),
             reply_markup=keyboard,
         )
@@ -249,7 +260,7 @@ def build_predict_handlers(service):
             text=(
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
-                f"گل‌های {game.team_b} را انتخاب کنید)\n"
+                f"گل‌های {game.team_b} را انتخاب کنید\n"
                 "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scoreb"),
@@ -295,13 +306,13 @@ def build_predict_handlers(service):
         user = update.effective_user
         sent = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=(
-                f"{_predict_header(user)}\n\n"
-                f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
-                f"گل‌های {game.team_b} را انتخاب کنید)\n"
-                "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
-            ),
-            reply_markup=_build_single_score_keyboard("scoreb"),
+        text=(
+            f"{_predict_header(user)}\n\n"
+            f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
+            f"گل‌های {game.team_b} را انتخاب کنید\n"
+            "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
+        ),
+        reply_markup=_build_single_score_keyboard("scoreb"),
         )
         context.user_data["predict_input_message_id"] = sent.message_id
         return ENTER_SCORE_B
@@ -372,18 +383,10 @@ def build_predict_handlers(service):
         return ConversationHandler.END
 
     @group_user
-    async def predict_cancel(update, context):
-        context.user_data.pop("predict_game_id", None)
-        context.user_data.pop("predict_score_a", None)
-        context.user_data.pop("predict_input_message_id", None)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="ثبت پیش‌بینی لغو شد.")
-        return ConversationHandler.END
-
-    @group_user
     async def predict_already_active(update, context):
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="شما یک گفت‌وگوی پیش‌بینی فعال دارید. لطفا ابتدا آن را کامل کنید یا /cancel بزنید، سپس دوباره /predict را اجرا کنید.",
+            text="شما یک گفت‌وگوی پیش‌بینی فعال دارید. لطفا ابتدا آن را کامل کنید، سپس دوباره /predict را اجرا کنید.",
         )
         return None
 
@@ -394,19 +397,22 @@ def build_predict_handlers(service):
                 CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_game_selected, pattern=r"^predict:game:\d+$"),
                 CallbackQueryHandler(predict_game_page, pattern=r"^predict:page:(next|prev):\d+$"),
+                CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
             ENTER_SCORE_A: [
                 CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_score_a_selected, pattern=r"^predict:scorea:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_a),
+                CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
             ENTER_SCORE_B: [
                 CommandHandler("predict", predict_already_active),
                 CallbackQueryHandler(predict_score_b_selected, pattern=r"^predict:scoreb:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_b),
+                CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", predict_cancel)],
+        fallbacks=[],
     )
 
     return {"predict_conversation": predict_conversation}
