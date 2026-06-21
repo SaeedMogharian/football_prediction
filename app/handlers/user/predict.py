@@ -224,7 +224,7 @@ def build_predict_handlers(service):
             text=(
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
-                f" گل‌های {game.team_a} را انتخاب کنید)\n"
+                f" گل‌های {game.team_a} را انتخاب کنید\n"
                 "یا عدد دلخواه را با ریپلای به همین پیام بفرستید:"
             ),
             reply_markup=_build_single_score_keyboard("scorea"),
@@ -261,7 +261,6 @@ def build_predict_handlers(service):
             text=(
                 f"{_predict_header(user)}\n"
                 " یک بازی را از لیست انتخاب کنید\n"
-                "برای لغو: از دکمه زیر استفاده کنید"
             ),
             reply_markup=keyboard,
         )
