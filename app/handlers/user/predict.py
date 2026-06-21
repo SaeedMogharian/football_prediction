@@ -18,6 +18,13 @@ def is_valid_prediction_input(service, game_id: int, pred_a: int, pred_b: int) -
 
 
 def build_predict_handlers(service):
+    async def _safe_edit_query_message(query, text: str, reply_markup=None):
+        try:
+            await query.edit_message_text(text=text, reply_markup=reply_markup)
+        except BadRequest as error:
+            if "Message is not modified" not in str(error):
+                raise
+
     def _clear_active_predict_flow_state(context):
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
@@ -220,7 +227,8 @@ def build_predict_handlers(service):
 
         context.user_data["predict_game_id"] = game_id
         context.user_data.pop("predict_score_a", None)
-        await query.edit_message_text(
+        await _safe_edit_query_message(
+            query,
             text=(
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
@@ -237,7 +245,7 @@ def build_predict_handlers(service):
         query = update.callback_query
         await query.answer()
         _clear_active_predict_flow_state(context)
-        await query.edit_message_text(text="ثبت پیش‌بینی لغو شد.", reply_markup=None)
+        await _safe_edit_query_message(query, text="ثبت پیش‌بینی لغو شد.", reply_markup=None)
         return ConversationHandler.END
 
     @group_user
@@ -253,11 +261,12 @@ def build_predict_handlers(service):
 
         keyboard = _build_game_keyboard(next_page)
         if keyboard is None:
-            await query.edit_message_text(text="فعلا بازی باز برای پیش‌بینی وجود ندارد.")
+            await _safe_edit_query_message(query, text="فعلا بازی باز برای پیش‌بینی وجود ندارد.")
             return ConversationHandler.END
 
         user = update.effective_user
-        await query.edit_message_text(
+        await _safe_edit_query_message(
+            query,
             text=(
                 f"{_predict_header(user)}\n"
                 " یک بازی را از لیست انتخاب کنید\n"
@@ -273,13 +282,14 @@ def build_predict_handlers(service):
         _, _, pred_a = query.data.split(":")
         game_id = context.user_data.get("predict_game_id")
         if game_id is None:
-            await query.edit_message_text(text="ابتدا یک بازی انتخاب کنید. دوباره /predict را بزنید.")
+            await _safe_edit_query_message(query, text="ابتدا یک بازی انتخاب کنید. دوباره /predict را بزنید.")
             return ConversationHandler.END
 
         context.user_data["predict_score_a"] = int(pred_a)
         game = service.game(game_id)
         user = update.effective_user
-        await query.edit_message_text(
+        await _safe_edit_query_message(
+            query,
             text=(
                 f"{_predict_header(user)}\n\n"
                 f"بازی {game_id}: {game.team_a} - {game.team_b}\n"
@@ -348,16 +358,16 @@ def build_predict_handlers(service):
         game_id = context.user_data.get("predict_game_id")
         pred_a = context.user_data.get("predict_score_a")
         if game_id is None or pred_a is None:
-            await query.edit_message_text(text="ابتدا مراحل را کامل کنید. دوباره /predict را بزنید.")
+            await _safe_edit_query_message(query, text="ابتدا مراحل را کامل کنید. دوباره /predict را بزنید.")
             return ConversationHandler.END
 
         user = update.effective_user
         group_id = update.effective_chat.id
         try:
             result_text = _save_prediction(user.id, group_id, game_id, int(pred_a), int(pred_b))
-            await query.edit_message_text(text=f"{_predict_header(user)}\n{result_text}")
+            await _safe_edit_query_message(query, text=f"{_predict_header(user)}\n{result_text}")
         except Exception:
-            await query.edit_message_text(text="ثبت پیش‌بینی ناموفق بود. دوباره /predict را بزنید.")
+            await _safe_edit_query_message(query, text="ثبت پیش‌بینی ناموفق بود. دوباره /predict را بزنید.")
         context.user_data.pop("predict_game_id", None)
         context.user_data.pop("predict_score_a", None)
         context.user_data.pop("predict_input_message_id", None)
