@@ -81,11 +81,11 @@ def build_stats_handlers(service):
 
         text = f"@{user.username}\nآمار شما در این گروه:"
         if user_rank:
-            text += f"\nرتبه: {user_rank}{_rank_medal(user_rank)}"
+            text += f"\n\nرتبه: {user_rank}{_rank_medal(user_rank)}"
         text += f"\n{len(predictions)} پیش‌بینی (برای {predicted_played_games_count} بازی برگزار شده)"
         text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون ({predicted_played_games_count}/{played_games_count})"
        
-        text += f"\n\n از{predicted_played_games_count} پیش‌بینی انجام شده: "
+        text += f"\n\nاز {predicted_played_games_count} پیش‌بینی انجام شده: "
         text += (
             f"\n{score_10_count} پیش‌بینی دقیق"
             f"{_score_medal(score_10_count, [counts[10] for counts in score_counts_by_user.values()])}"
