@@ -1,7 +1,7 @@
 import logging
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import TimedOut
+from telegram.error import BadRequest, TimedOut
 from telegram.ext import CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler, filters
 
 from app.core import group_user
@@ -18,6 +18,34 @@ def is_valid_prediction_input(service, game_id: int, pred_a: int, pred_b: int) -
 
 
 def build_predict_handlers(service):
+    def _clear_active_predict_flow_state(context):
+        context.user_data.pop("predict_game_id", None)
+        context.user_data.pop("predict_score_a", None)
+        context.user_data.pop("predict_input_message_id", None)
+
+    async def _close_active_predict_flow(update, context, closing_text: str | None = None):
+        chat_id = update.effective_chat.id
+        message_id = context.user_data.get("predict_input_message_id")
+
+        _clear_active_predict_flow_state(context)
+
+        if message_id is None:
+            return
+
+        try:
+            if closing_text:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=closing_text,
+                    reply_markup=None,
+                )
+            else:
+                await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except BadRequest:
+            # Message may already be deleted or not editable.
+            pass
+
     def _predict_user_label(user) -> str:
         if user.username:
             return f"@{user.username}"
@@ -161,9 +189,7 @@ def build_predict_handlers(service):
             )
             return ConversationHandler.END
 
-        context.user_data.pop("predict_game_id", None)
-        context.user_data.pop("predict_score_a", None)
-        context.user_data.pop("predict_input_message_id", None)
+        await _close_active_predict_flow(update, context)
         user = update.effective_user
         try:
             sent = await context.bot.send_message(
@@ -210,9 +236,7 @@ def build_predict_handlers(service):
     async def predict_cancel(update, context):
         query = update.callback_query
         await query.answer()
-        context.user_data.pop("predict_game_id", None)
-        context.user_data.pop("predict_score_a", None)
-        context.user_data.pop("predict_input_message_id", None)
+        _clear_active_predict_flow_state(context)
         await query.edit_message_text(text="ثبت پیش‌بینی لغو شد.", reply_markup=None)
         return ConversationHandler.END
 
@@ -383,36 +407,39 @@ def build_predict_handlers(service):
         return ConversationHandler.END
 
     @group_user
-    async def predict_already_active(update, context):
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="شما یک گفت‌وگوی پیش‌بینی فعال دارید. لطفا ابتدا آن را کامل کنید، سپس دوباره /predict را اجرا کنید.",
+    async def predict_restart(update, context):
+        user = update.effective_user
+        await _close_active_predict_flow(
+            update,
+            context,
+            closing_text=f"{_predict_header(user)}\nاین گفت‌وگوی پیش‌بینی با /predict جدید بسته شد.",
         )
-        return None
+        return await predict_start(update, context)
 
     predict_conversation = ConversationHandler(
         entry_points=[CommandHandler("predict", predict_start)],
         states={
             SELECT_GAME: [
-                CommandHandler("predict", predict_already_active),
+                CommandHandler("predict", predict_restart),
                 CallbackQueryHandler(predict_game_selected, pattern=r"^predict:game:\d+$"),
                 CallbackQueryHandler(predict_game_page, pattern=r"^predict:page:(next|prev):\d+$"),
                 CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
             ENTER_SCORE_A: [
-                CommandHandler("predict", predict_already_active),
+                CommandHandler("predict", predict_restart),
                 CallbackQueryHandler(predict_score_a_selected, pattern=r"^predict:scorea:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_a),
                 CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
             ENTER_SCORE_B: [
-                CommandHandler("predict", predict_already_active),
+                CommandHandler("predict", predict_restart),
                 CallbackQueryHandler(predict_score_b_selected, pattern=r"^predict:scoreb:\d+$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, predict_enter_score_b),
                 CallbackQueryHandler(predict_cancel, pattern=r"^predict:cancel$"),
             ],
         },
         fallbacks=[],
+        allow_reentry=True,
     )
 
     return {"predict_conversation": predict_conversation}
