@@ -340,9 +340,6 @@ class Service:
         elapsed_minutes = (datetime.now(self.timezone) - played_at_dt).total_seconds() / 60
         if elapsed_minutes < 0 or elapsed_minutes > 200:
             return False
-        current_game_id = self.current_game()
-        if game_id < current_game_id:
-            return False
         team_a = self._normalize_team_name(game.team_a)
         team_b = self._normalize_team_name(game.team_b)
         logger.info("event=fotmob_fetch_start game_id=%s team_a=%s team_b=%s", game_id, game.team_a, game.team_b)
