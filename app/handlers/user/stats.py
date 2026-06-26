@@ -38,7 +38,8 @@ def build_stats_handlers(service):
         group_rankings = service.get_group_rankings(group_id)
         text = "رده‌بندی گروه:\n"
         for index, (_, username, points) in enumerate(group_rankings, start=1):
-            text += f"{index} - {username} : {points}\n"
+            rank_label = _rank_medal(index) or str(index)
+            text += f"{rank_label} - {username} : {points}\n"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
     @group_user
@@ -98,8 +99,7 @@ def build_stats_handlers(service):
             f"\n{win_count} دیگر پیش‌‌‌بینی‌های برد"
             f"{_score_medal(win_count, [counts[5] + counts[4] for counts in score_counts_by_user.values()])}"
         )
-        avg_den = min(played_games_count, len(scores)) if scores and played_games_count else 1
-        text += f"\nمیانگین {round(sum(scores) / avg_den, 2) if scores else 0} امتیاز از هر پیش‌بینی"
+        text += f"\nمیانگین {round(sum(scores) / max(len(scores), 1), 2) if scores else 0} امتیاز از هر پیش‌بینی"
 
         text += "\n\nآخرین پیش‌بینی‌ها"
         if predictions:
