@@ -251,6 +251,7 @@ def main():
     application.add_handler(handlers["games_show_all_callback"])
     application.add_handler(CommandHandler("rank", handlers["rank"]))
     application.add_handler(CommandHandler("my_stats", handlers["my_stats"]))
+    application.add_handler(handlers["my_stats_all_predictions_callback"])
     application.add_handler(CommandHandler("results", handlers["results"]))
     application.add_handler(CommandHandler("remind", handlers["remind"]))
     application.add_handler(CommandHandler("group_stats", handlers["group_stats"]))
