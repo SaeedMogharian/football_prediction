@@ -45,22 +45,17 @@ def build_stats_handlers(service):
             return ""
         return _rank_medal(rank).strip() or _keycap_number(rank)
 
-    def _prediction_score_stars(score: int) -> str:
-        stars = {
-            10: "****",
-            7: "***",
-            5: "**",
-            4: "**",
-        }
-        return stars.get(score, "")
+    def _display_rank_label(rank: int | None) -> str:
+        if not rank:
+            return ""
+        return f"\u2066{_rank_label(rank)}\u2069"
 
     def _build_prediction_line(game_id: int, predictions: dict, bold_top_score: bool = False) -> str:
         game = service.game(game_id)
         score_value = predictions[game_id][2] if game.is_played else "np"
-        stars = _prediction_score_stars(score_value) if isinstance(score_value, int) else ""
         line = (
             f"{game_id}: {escape(game.team_a)} {predictions[game_id][0]} - "
-            f"{predictions[game_id][1]} {escape(game.team_b)}: {stars} {score_value}".rstrip()
+            f"{predictions[game_id][1]} {escape(game.team_b)}: {score_value}"
         )
         if bold_top_score and score_value == 10:
             return f"<b>{line}</b>"
@@ -117,7 +112,7 @@ def build_stats_handlers(service):
 
         text = f"@{user.username}\nآمار شما در این گروه:"
         if user_rank:
-            text += f"\n\nرتبه: {_rank_label(user_rank)}"
+            text += f"\n\nرتبه: {_display_rank_label(user_rank)}"
         text += f"\nامتیاز کل: {user_total_score}"
         text += f"\n{len(predictions)} پیش‌بینی (برای {predicted_played_games_count} بازی برگزار شده)"
         text += f"\nپیش‌بینی {coverage}٪ بازی‌ها تا کنون ({predicted_played_games_count}/{played_games_count})"
