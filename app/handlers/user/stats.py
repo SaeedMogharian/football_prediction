@@ -139,11 +139,29 @@ def build_stats_handlers(service):
     async def rank_command(update, context):
         group_id = update.effective_chat.id
         group_rankings = service.get_group_rankings(group_id)
-        text = "رده‌بندی گروه:\n"
+        rank_rows = []
         for index, (_, username, points) in enumerate(group_rankings, start=1):
-            rank_label = _rank_label(index)
-            text += f"{rank_label} - {username} : {points}\n"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+            rank_rows.append((str(_rank_label(index)), username or "-", str(points)))
+
+        rank_width = max((len(rank) for rank, _, _ in rank_rows), default=1)
+        user_width = max((len(username) for _, username, _ in rank_rows), default=4)
+        points_width = max((len(points) for _, _, points in rank_rows), default=5)
+
+        text = "رده‌بندی گروه:\n<pre>"
+        text += (
+            f"{'رتبه':<{rank_width}}  "
+            f"{'کاربر':<{user_width}}  "
+            f"{'امتیاز':>{points_width}}\n"
+        )
+        text += f"{'-' * rank_width}  {'-' * user_width}  {'-' * points_width}\n"
+        for rank_label, username, points in rank_rows:
+            text += f"{rank_label:<{rank_width}}  {username:<{user_width}}  {points:>{points_width}}\n"
+        text += "</pre>"
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+        )
 
     @group_user
     async def my_stats_command(update, context):
