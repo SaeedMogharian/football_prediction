@@ -48,17 +48,17 @@ def build_stats_handlers(service):
     def _display_rank_label(rank: int | None) -> str:
         if not rank:
             return ""
-        return f"\u2066{_rank_label(rank)}\u2069"
+        label = _rank_medal(rank).strip() or str(rank)
+        return f"\u2066{label}\u2069"
 
-    def _build_prediction_line(game_id: int, predictions: dict, bold_top_score: bool = False) -> str:
+    def _build_prediction_line(game_id: int, predictions: dict) -> str:
         game = service.game(game_id)
         score_value = predictions[game_id][2] if game.is_played else "np"
+        game_prefix = "⭐ " if score_value == 10 else ""
         line = (
-            f"{game_id}: {escape(game.team_a)} {predictions[game_id][0]} - "
+            f"{game_prefix}{game_id}: {escape(game.team_a)} {predictions[game_id][0]} - "
             f"{predictions[game_id][1]} {escape(game.team_b)}: {score_value}"
         )
-        if bold_top_score and score_value == 10:
-            return f"<b>{line}</b>"
         return line
 
     def _build_predictions_text(predictions: dict, limit: int | None = 10) -> str:
@@ -70,7 +70,7 @@ def build_stats_handlers(service):
         shown = 0
         while game_id >= 1 and (limit is None or shown < limit):
             if game_id in predictions and service.game_exists(game_id):
-                text += "\n" + _build_prediction_line(game_id, predictions, bold_top_score=True)
+                text += "\n" + _build_prediction_line(game_id, predictions)
                 shown += 1
             game_id -= 1
         return text
